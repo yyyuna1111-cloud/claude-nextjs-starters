@@ -3,6 +3,7 @@ import type { NextConfig } from 'next'
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   compress: true,
+  transpilePackages: ['react-syntax-highlighter'],
   images: {
     formats: ['image/webp', 'image/avif'],
   },
