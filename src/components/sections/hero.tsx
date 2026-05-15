@@ -6,6 +6,10 @@ export function HeroSection() {
     <section className="relative py-20 md:py-32">
       <Container>
         <div className="mx-auto max-w-4xl text-center">
+          <p className="mb-4 text-2xl font-semibold">
+            안녕안녕낭녕녊ㄴㄹㅁㄴㄹㅁㄴ
+          </p>
+
           <Badge variant="secondary" className="mb-6">
             ✨ Next.js 15 기반 스타터킷
           </Badge>
