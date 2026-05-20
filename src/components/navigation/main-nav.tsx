@@ -11,6 +11,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { title: '홈', href: '/' },
+  { title: '대시보드', href: '/dashboard' },
 ]
 
 export function MainNav() {

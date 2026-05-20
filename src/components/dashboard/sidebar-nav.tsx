@@ -5,7 +5,13 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Play, Server, FlaskConical } from 'lucide-react'
+import {
+  LayoutDashboard,
+  Play,
+  Server,
+  FlaskConical,
+  Network,
+} from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 
@@ -14,6 +20,7 @@ const navItems = [
   { href: '/dashboard/train', label: 'Train', icon: Play },
   { href: '/dashboard/serving', label: 'Serving', icon: Server },
   { href: '/dashboard/evaluation', label: 'Evaluation', icon: FlaskConical },
+  { href: '/dashboard/infrastructure', label: 'Infrastructure', icon: Network },
 ]
 
 // 사이드바 내부 링크 목록 컴포넌트
