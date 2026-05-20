@@ -8,10 +8,9 @@ import Link from 'next/link'
 import {
   Activity,
   AlertTriangle,
+  Box,
   CheckCircle2,
   Clock,
-  Cpu,
-  Database,
   GitBranch,
   HardDrive,
   MemoryStick,
@@ -53,12 +52,20 @@ import { Separator } from '@/components/ui/separator'
 // 상단 요약 카드 - 카운터 타입 (숫자)
 const counterCards = [
   {
-    href: '/dashboard/deployment',
+    href: '/dashboard/serving',
     label: '운영 중 서비스',
     value: 4,
     colorClass: 'text-emerald-400',
     bgClass: 'bg-emerald-400/10',
     icon: CheckCircle2,
+  },
+  {
+    href: '/dashboard/train?status=Failed',
+    label: '실패 Pipeline',
+    value: 3,
+    colorClass: 'text-red-400',
+    bgClass: 'bg-red-400/10',
+    icon: XCircle,
   },
   {
     href: '/dashboard/infrastructure',
@@ -69,28 +76,12 @@ const counterCards = [
     icon: Server,
   },
   {
-    href: '/dashboard/monitoring',
-    label: '실패 Pipeline',
-    value: 3,
-    colorClass: 'text-red-400',
-    bgClass: 'bg-red-400/10',
-    icon: XCircle,
-  },
-  {
-    href: '/dashboard/evaluation',
-    label: '평가 기준 미달',
-    value: 5,
-    colorClass: 'text-orange-400',
-    bgClass: 'bg-orange-400/10',
-    icon: AlertTriangle,
-  },
-  {
-    href: '/dashboard/train',
-    label: '진행 중 Train',
-    value: 7,
-    colorClass: 'text-blue-400',
-    bgClass: 'bg-blue-400/10',
-    icon: Play,
+    href: '/dashboard/evaluate',
+    label: '등록된 모델',
+    value: 12,
+    colorClass: 'text-violet-400',
+    bgClass: 'bg-violet-400/10',
+    icon: Box,
   },
 ]
 
@@ -123,16 +114,6 @@ const usageCards = [
 ]
 
 // 파이프라인 상태 트렌드 - 7일간 stacked bar
-const pipelineStatusData = [
-  { date: '05/09', queued: 4, running: 3, succeeded: 8, failed: 1 },
-  { date: '05/10', queued: 2, running: 5, succeeded: 10, failed: 2 },
-  { date: '05/11', queued: 6, running: 4, succeeded: 7, failed: 0 },
-  { date: '05/12', queued: 3, running: 6, succeeded: 12, failed: 3 },
-  { date: '05/13', queued: 5, running: 2, succeeded: 9, failed: 1 },
-  { date: '05/14', queued: 1, running: 7, succeeded: 11, failed: 2 },
-  { date: '05/15', queued: 4, running: 5, succeeded: 6, failed: 3 },
-]
-
 // 리소스 사용률 트렌드 - 24시간 multi-line
 const resourceTrendData = Array.from({ length: 24 }, (_, i) => ({
   time: `${String(i).padStart(2, '0')}:00`,
@@ -286,11 +267,84 @@ const podNamespaceData = [
 ]
 
 // 스토리지 사용량 - stacked bar
-const storageUsageData = [
-  { category: 'Dataset', dataset: 420, model: 0, artifacts: 0, logs: 0 },
-  { category: 'Model', dataset: 0, model: 890, artifacts: 0, logs: 0 },
-  { category: 'Artifacts', dataset: 0, model: 0, artifacts: 310, logs: 0 },
-  { category: 'Logs', dataset: 0, model: 0, artifacts: 0, logs: 150 },
+// 학습 현황 - 진행 중 + 최근 완료
+const trainRunningJobs = [
+  {
+    id: 'run-006',
+    name: 'Stable Diffusion',
+    epoch: 3,
+    totalEpoch: 20,
+    gpus: 8,
+    elapsed: '2h 14m',
+  },
+  {
+    id: 'run-001',
+    name: 'ResNet50 파인튜닝',
+    epoch: 7,
+    totalEpoch: 10,
+    gpus: 4,
+    elapsed: '48m',
+  },
+  {
+    id: 'run-007',
+    name: 'T5 파인튜닝',
+    epoch: 1,
+    totalEpoch: 5,
+    gpus: 1,
+    elapsed: '12m',
+  },
+]
+const trainCompletedJobs = [
+  {
+    id: 'run-003',
+    name: 'COCO YOLOv8',
+    duration: '4h 22m',
+    metric: 'mAP 0.712',
+    status: 'Succeeded' as const,
+  },
+  {
+    id: 'run-004',
+    name: 'Whisper 파인튜닝',
+    duration: '1h 38m',
+    metric: 'WER 8.4%',
+    status: 'Failed' as const,
+  },
+  {
+    id: 'run-005',
+    name: 'ColabFilter',
+    duration: '23m',
+    metric: 'NDCG 0.631',
+    status: 'Succeeded' as const,
+  },
+]
+
+// 평가 현황 - 진행 중 + 최근 완료
+const evalRunningJobs = [
+  { id: 'eval-001', name: 'RAG Pipeline v2.1', type: 'RAGAS', elapsed: '18m' },
+  { id: 'eval-002', name: 'Embedding 벤치마크', type: 'BEIR', elapsed: '5m' },
+]
+const evalCompletedJobs = [
+  {
+    id: 'eval-003',
+    name: 'GPT-FT v2.3',
+    metric: 'RAGAS 0.84',
+    result: 'champion' as const,
+    status: 'Succeeded' as const,
+  },
+  {
+    id: 'eval-004',
+    name: 'Whisper v1.2',
+    metric: 'WER 8.4%',
+    result: 'rejected' as const,
+    status: 'Failed' as const,
+  },
+  {
+    id: 'eval-005',
+    name: 'YOLOv8-COCO',
+    metric: 'mAP 0.712',
+    result: 'champion' as const,
+    status: 'Succeeded' as const,
+  },
 ]
 
 // 최근 활동 타임라인
@@ -483,14 +537,17 @@ function ActivityStatusBadge({ status }: { status: ActivityStatus }) {
 export default function DashboardPage() {
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>('all')
 
-  const filteredActivities =
-    activityFilter === 'all'
-      ? recentActivities
-      : recentActivities.filter(a =>
-          activityFilter === 'deployment'
-            ? a.type === 'deployment' || a.type === 'rollback'
-            : a.type === activityFilter
-        )
+  const filteredActivities = (() => {
+    const list =
+      activityFilter === 'all'
+        ? recentActivities
+        : recentActivities.filter(a =>
+            activityFilter === 'deployment'
+              ? a.type === 'deployment' || a.type === 'rollback'
+              : a.type === activityFilter
+          )
+    return activityFilter === 'all' ? list.slice(0, 5) : list
+  })()
 
   return (
     <div className="space-y-6 pb-10">
@@ -504,9 +561,14 @@ export default function DashboardPage() {
 
       {/* ─── 상단: Summary Cards (8개, 2줄 grid) ─── */}
       <section aria-label="요약 카드">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          {/* 카운터 카드 5개 */}
-          {counterCards.map(card => {
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {/* 카운터 카드 4개 */}
+          {[
+            counterCards[0],
+            counterCards[1],
+            counterCards[2],
+            counterCards[3],
+          ].map(card => {
             const Icon = card.icon
             return (
               <Link key={card.label} href={card.href} className="group">
@@ -563,101 +625,11 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      {/* ─── 중단: 핵심 그래프 (2x2 grid) ─── */}
+      {/* ─── 중단: 핵심 그래프 ─── */}
       <section aria-label="핵심 그래프">
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {/* 1. Pipeline Status Trend */}
-          <Link href="/dashboard/pipelines" className="group">
-            <Card className="h-full transition-shadow group-hover:shadow-md">
-              <CardHeader className="pb-0">
-                <CardTitle className="text-sm font-semibold">
-                  파이프라인 상태 추이
-                </CardTitle>
-                <CardDescription className="text-xs">
-                  최근 7일간 파이프라인 상태 추이
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="pt-4">
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart
-                    data={pipelineStatusData}
-                    margin={{ top: 0, right: 8, left: -20, bottom: 0 }}
-                  >
-                    <CartesianGrid
-                      strokeDasharray="3 3"
-                      stroke="hsl(var(--border))"
-                      opacity={0.8}
-                    />
-                    <XAxis
-                      dataKey="date"
-                      tick={{
-                        fontSize: 11,
-                        fill: 'hsl(var(--foreground))',
-                        opacity: 0.75,
-                      }}
-                      stroke="hsl(var(--border))"
-                    />
-                    <YAxis
-                      tick={{
-                        fontSize: 11,
-                        fill: 'hsl(var(--foreground))',
-                        opacity: 0.75,
-                      }}
-                      stroke="hsl(var(--border))"
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: '#1e293b',
-                        border: '1px solid #334155',
-                        borderRadius: '8px',
-                        fontSize: '12px',
-                        color: '#f1f5f9',
-                        boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-                        padding: '8px 12px',
-                      }}
-                      labelStyle={{ color: '#94a3b8', marginBottom: '4px' }}
-                      itemStyle={{ color: '#f1f5f9' }}
-                    />
-                    <Legend
-                      wrapperStyle={{
-                        fontSize: '11px',
-                        color: 'hsl(var(--foreground))',
-                      }}
-                    />
-                    <Bar
-                      dataKey="queued"
-                      stackId="a"
-                      fill="#94a3b8"
-                      name="Queued"
-                      radius={[0, 0, 0, 0]}
-                    />
-                    <Bar
-                      dataKey="running"
-                      stackId="a"
-                      fill="#38bdf8"
-                      name="Running"
-                    />
-                    <Bar
-                      dataKey="succeeded"
-                      stackId="a"
-                      fill="#34d399"
-                      name="Succeeded"
-                    />
-                    <Bar
-                      dataKey="failed"
-                      stackId="a"
-                      fill="#fb7185"
-                      name="Failed"
-                      radius={[4, 4, 0, 0]}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          </Link>
-
-          {/* 2. Resource Usage Trend */}
-          <Link href="/dashboard/resources" className="group">
+          {/* 1. Resource Usage Trend */}
+          <Link href="/dashboard/resources" className="group lg:order-2">
             <Card className="h-full transition-shadow group-hover:shadow-md">
               <CardHeader className="pb-0">
                 <CardTitle className="text-sm font-semibold">
@@ -746,8 +718,8 @@ export default function DashboardPage() {
             </Card>
           </Link>
 
-          {/* 3. Failure & Alert Trend */}
-          <Link href="/dashboard/alerts" className="group">
+          {/* 2. Failure & Alert Trend */}
+          <Link href="/dashboard/alerts" className="group lg:order-1">
             <Card className="h-full transition-shadow group-hover:shadow-md">
               <CardHeader className="pb-0">
                 <CardTitle className="text-sm font-semibold">
@@ -807,133 +779,27 @@ export default function DashboardPage() {
                     <Bar
                       dataKey="trainFail"
                       stackId="a"
-                      fill="#60a5fa"
+                      fill="#93c5fd"
                       name="학습 실패"
                     />
                     <Bar
                       dataKey="evalFail"
                       stackId="a"
-                      fill="#fbbf24"
+                      fill="#6ee7b7"
                       name="평가 실패"
                     />
                     <Bar
                       dataKey="deployFail"
                       stackId="a"
-                      fill="#a78bfa"
+                      fill="#c4b5fd"
                       name="배포 실패"
                     />
                     <Bar
                       dataKey="servingFail"
                       stackId="a"
-                      fill="#f87171"
+                      fill="#fca5a5"
                       name="서빙 장애"
-                    />
-                    <Bar
-                      dataKey="infraFail"
-                      stackId="a"
-                      fill="#94a3b8"
-                      name="인프라 장애"
                       radius={[4, 4, 0, 0]}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          </Link>
-
-          {/* 4. Memory Usage by Node */}
-          <Link href="/dashboard/infrastructure" className="group">
-            <Card className="h-full transition-shadow group-hover:shadow-md">
-              <CardHeader className="pb-0">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="text-sm font-semibold">
-                      노드별 메모리 사용률
-                    </CardTitle>
-                    <CardDescription className="text-xs">
-                      GPU 노드 / CPU 노드 구분 (%)
-                    </CardDescription>
-                  </div>
-                  <div className="text-muted-foreground flex items-center gap-3 text-xs">
-                    <span className="flex items-center gap-1">
-                      <span className="inline-block size-2 rounded-full bg-[#60a5fa]" />
-                      GPU
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <span className="inline-block size-2 rounded-full bg-[#4ade80]" />
-                      CPU
-                    </span>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-4">
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart
-                    data={nodeMemoryData}
-                    layout="vertical"
-                    margin={{ top: 0, right: 16, left: 0, bottom: 0 }}
-                  >
-                    <CartesianGrid
-                      strokeDasharray="3 3"
-                      stroke="hsl(var(--border))"
-                      horizontal={false}
-                    />
-                    <XAxis
-                      type="number"
-                      domain={[0, 100]}
-                      tick={{
-                        fontSize: 11,
-                        fill: 'hsl(var(--foreground))',
-                        opacity: 0.75,
-                      }}
-                      stroke="hsl(var(--border))"
-                      tickFormatter={v => `${v}%`}
-                    />
-                    <YAxis
-                      type="category"
-                      dataKey="node"
-                      tick={{
-                        fontSize: 11,
-                        fill: 'hsl(var(--foreground))',
-                        opacity: 0.75,
-                      }}
-                      stroke="hsl(var(--border))"
-                      width={88}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: '#1e293b',
-                        border: '1px solid #334155',
-                        borderRadius: '8px',
-                        fontSize: '12px',
-                        color: '#f1f5f9',
-                        boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-                        padding: '8px 12px',
-                      }}
-                      labelStyle={{ color: '#94a3b8', marginBottom: '4px' }}
-                      itemStyle={{ color: '#f1f5f9' }}
-                      formatter={(value, name, props) => [
-                        `${value}%`,
-                        name === 'used'
-                          ? `Used (${props.payload.type} 노드)`
-                          : 'Free',
-                      ]}
-                    />
-                    <Bar dataKey="used" name="used">
-                      {nodeMemoryData.map((entry, index) => (
-                        <Cell
-                          key={index}
-                          fill={
-                            NODE_COLORS[entry.type as keyof typeof NODE_COLORS]
-                          }
-                        />
-                      ))}
-                    </Bar>
-                    <Bar
-                      dataKey="free"
-                      name="free"
-                      fill="#e2e8f0"
-                      radius={[0, 4, 4, 0]}
                     />
                   </BarChart>
                 </ResponsiveContainer>
@@ -943,301 +809,473 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      {/* ─── 하단: 운영 영역 (2x2 grid) ─── */}
+      {/* ─── 하단: 운영 영역 (왼쪽: 서빙→학습→평가 / 오른쪽: 노드메모리+Pod+최근활동) ─── */}
       <section aria-label="운영 영역">
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {/* 5. Serving Health */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
+          {/* ── 왼쪽: 학습 → 평가 → 서빙 세로 스택 ── */}
+          <div className="flex flex-col gap-4">
+            {/* 학습 현황 */}
+            <Link href="/dashboard/train" className="group">
+              <Card className="transition-shadow group-hover:shadow-md">
+                <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-semibold">
-                    서비스 상태
+                    학습 현황
                   </CardTitle>
                   <CardDescription className="text-xs">
-                    서비스별 운영 상태
+                    진행 중 · 최근 완료
                   </CardDescription>
-                </div>
-                <Link
-                  href="/dashboard/serving"
-                  className="text-muted-foreground hover:text-foreground text-xs underline-offset-4 hover:underline"
-                >
-                  전체 보기
-                </Link>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {servingHealthData.map((svc, idx) => (
-                <div key={svc.name}>
-                  <div className="flex items-center gap-3 py-1.5">
-                    {/* 서비스명 + 상태 */}
-                    <div className="flex min-w-0 flex-1 items-center gap-2">
-                      <Server className="text-muted-foreground size-3.5 shrink-0" />
-                      <span className="truncate text-sm font-medium">
-                        {svc.name}
-                      </span>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div>
+                    <p className="text-muted-foreground mb-1.5 text-[11px] font-medium tracking-wide uppercase">
+                      진행 중
+                    </p>
+                    <div className="space-y-2">
+                      {trainRunningJobs.map(job => (
+                        <div key={job.id}>
+                          <div className="mb-1 flex items-center justify-between text-xs">
+                            <span className="font-medium">{job.name}</span>
+                            <span className="text-muted-foreground">
+                              Epoch {job.epoch}/{job.totalEpoch} · GPU{' '}
+                              {job.gpus}개 · {job.elapsed}
+                            </span>
+                          </div>
+                          <div className="bg-muted h-1.5 w-full overflow-hidden rounded-full">
+                            <div
+                              className="h-full rounded-full bg-blue-500"
+                              style={{
+                                width: `${(job.epoch / job.totalEpoch) * 100}%`,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                    <ServingStatusBadge status={svc.status} />
-                    {/* 메트릭 */}
-                    <div className="text-muted-foreground hidden items-center gap-4 text-xs sm:flex">
-                      <span>
-                        <span className="text-foreground font-medium">
-                          {svc.latency}
-                        </span>{' '}
-                        latency
+                  </div>
+                  <Separator />
+                  <div>
+                    <p className="text-muted-foreground mb-1.5 text-[11px] font-medium tracking-wide uppercase">
+                      최근 완료
+                    </p>
+                    <div className="space-y-1.5">
+                      {trainCompletedJobs.map(job => (
+                        <div
+                          key={job.id}
+                          className="flex items-center justify-between gap-2 text-xs"
+                        >
+                          <span className="min-w-0 truncate font-medium">
+                            {job.name}
+                          </span>
+                          <span className="text-muted-foreground shrink-0">
+                            {job.metric}
+                          </span>
+                          <span className="text-muted-foreground shrink-0">
+                            {job.duration}
+                          </span>
+                          <Badge
+                            variant={
+                              job.status === 'Succeeded'
+                                ? 'secondary'
+                                : 'destructive'
+                            }
+                            className="shrink-0 text-[10px]"
+                          >
+                            {job.status === 'Succeeded' ? '완료' : '실패'}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+
+            {/* 평가 현황 */}
+            <Link href="/dashboard/evaluation" className="group">
+              <Card className="transition-shadow group-hover:shadow-md">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-semibold">
+                    평가 현황
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    진행 중 · 최근 완료 · Champion 교체 여부
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div>
+                    <p className="text-muted-foreground mb-1.5 text-[11px] font-medium tracking-wide uppercase">
+                      진행 중
+                    </p>
+                    <div className="space-y-1.5">
+                      {evalRunningJobs.map(job => (
+                        <div
+                          key={job.id}
+                          className="flex items-center justify-between text-xs"
+                        >
+                          <span className="font-medium">{job.name}</span>
+                          <span className="text-muted-foreground">
+                            {job.type} · {job.elapsed} 경과
+                          </span>
+                          <Badge
+                            variant="default"
+                            className="bg-blue-500 text-[10px] hover:bg-blue-500"
+                          >
+                            실행 중
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <Separator />
+                  <div>
+                    <p className="text-muted-foreground mb-1.5 text-[11px] font-medium tracking-wide uppercase">
+                      최근 완료
+                    </p>
+                    <div className="space-y-1.5">
+                      {evalCompletedJobs.map(job => (
+                        <div
+                          key={job.id}
+                          className="flex items-center justify-between gap-2 text-xs"
+                        >
+                          <span className="min-w-0 truncate font-medium">
+                            {job.name}
+                          </span>
+                          <span className="text-muted-foreground shrink-0">
+                            {job.metric}
+                          </span>
+                          {job.result === 'champion' ? (
+                            <Badge
+                              variant="default"
+                              className="shrink-0 bg-emerald-500 text-[10px] hover:bg-emerald-500"
+                            >
+                              Champion 교체
+                            </Badge>
+                          ) : (
+                            <Badge
+                              variant="secondary"
+                              className="shrink-0 text-[10px]"
+                            >
+                              보류
+                            </Badge>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+
+            {/* 서빙 현황 */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-sm font-semibold">
+                      서빙 현황
+                    </CardTitle>
+                    <CardDescription className="text-xs">
+                      서비스별 운영 상태 · latency / err / rps
+                    </CardDescription>
+                  </div>
+                  <Link
+                    href="/dashboard/serving"
+                    className="text-muted-foreground hover:text-foreground text-xs underline-offset-4 hover:underline"
+                  >
+                    전체 보기
+                  </Link>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {servingHealthData.map((svc, idx) => (
+                  <div key={svc.name}>
+                    <div className="flex items-center gap-3 py-1.5">
+                      <div className="flex min-w-0 flex-1 items-center gap-2">
+                        <Server className="text-muted-foreground size-3.5 shrink-0" />
+                        <span className="truncate text-sm font-medium">
+                          {svc.name}
+                        </span>
+                      </div>
+                      <ServingStatusBadge status={svc.status} />
+                      <div className="text-muted-foreground hidden items-center gap-4 text-xs sm:flex">
+                        <span>
+                          <span className="text-foreground font-medium">
+                            {svc.latency}
+                          </span>{' '}
+                          latency
+                        </span>
+                        <span>
+                          <span className="text-foreground font-medium">
+                            {svc.errorRate}
+                          </span>{' '}
+                          err
+                        </span>
+                        <span>
+                          <span className="text-foreground font-medium">
+                            {svc.rps}
+                          </span>{' '}
+                          rps
+                        </span>
+                      </div>
+                    </div>
+                    {idx < servingHealthData.length - 1 && <Separator />}
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* ── 오른쪽: 노드별 메모리 + Pod 네임스페이스 + 최근 활동 ── */}
+          <div className="flex flex-col gap-4">
+            {/* 노드별 메모리 사용률 */}
+            <Link href="/dashboard/infrastructure" className="group">
+              <Card className="transition-shadow group-hover:shadow-md">
+                <CardHeader className="pb-0">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="text-sm font-semibold">
+                        노드별 메모리 사용률
+                      </CardTitle>
+                      <CardDescription className="text-xs">
+                        전체 클러스터 노드 상태 (%)
+                      </CardDescription>
+                    </div>
+                    <div className="text-muted-foreground flex items-center gap-3 text-xs">
+                      <span className="flex items-center gap-1">
+                        <span className="inline-block size-2 rounded-full bg-[#60a5fa]" />
+                        Used
                       </span>
-                      <span>
-                        <span className="text-foreground font-medium">
-                          {svc.errorRate}
-                        </span>{' '}
-                        err
-                      </span>
-                      <span>
-                        <span className="text-foreground font-medium">
-                          {svc.rps}
-                        </span>{' '}
-                        rps
+                      <span className="flex items-center gap-1">
+                        <span className="inline-block size-2 rounded-full bg-[#e2e8f0]" />
+                        Free
                       </span>
                     </div>
                   </div>
-                  {idx < servingHealthData.length - 1 && <Separator />}
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+                </CardHeader>
+                <CardContent className="pt-4">
+                  <ResponsiveContainer width="100%" height={200}>
+                    <BarChart
+                      data={nodeMemoryData}
+                      layout="vertical"
+                      margin={{ top: 0, right: 16, left: 0, bottom: 0 }}
+                    >
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke="hsl(var(--border))"
+                        horizontal={false}
+                      />
+                      <XAxis
+                        type="number"
+                        domain={[0, 100]}
+                        tick={{
+                          fontSize: 11,
+                          fill: 'hsl(var(--foreground))',
+                          opacity: 0.75,
+                        }}
+                        stroke="hsl(var(--border))"
+                        tickFormatter={v => `${v}%`}
+                      />
+                      <YAxis
+                        type="category"
+                        dataKey="node"
+                        tick={{
+                          fontSize: 11,
+                          fill: 'hsl(var(--foreground))',
+                          opacity: 0.75,
+                        }}
+                        stroke="hsl(var(--border))"
+                        width={88}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: '#1e293b',
+                          border: '1px solid #334155',
+                          borderRadius: '8px',
+                          fontSize: '12px',
+                          color: '#f1f5f9',
+                          boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                          padding: '8px 12px',
+                        }}
+                        labelStyle={{ color: '#94a3b8', marginBottom: '4px' }}
+                        itemStyle={{ color: '#f1f5f9' }}
+                        formatter={(value, name) => [
+                          `${value}%`,
+                          name === 'used' ? '사용 중' : '여유',
+                        ]}
+                      />
+                      <Bar dataKey="used" name="used">
+                        {nodeMemoryData.map((entry, index) => (
+                          <Cell
+                            key={`cell-${index}`}
+                            fill={
+                              NODE_COLORS[
+                                entry.type as keyof typeof NODE_COLORS
+                              ]
+                            }
+                          />
+                        ))}
+                      </Bar>
+                      <Bar
+                        dataKey="free"
+                        name="free"
+                        fill="#e2e8f0"
+                        radius={[0, 4, 4, 0]}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            </Link>
 
-          {/* 6. Pod Health by Namespace */}
-          <Link href="/dashboard/infrastructure" className="group">
-            <Card className="h-full transition-shadow group-hover:shadow-md">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold">
-                  네임스페이스별 Pod 상태
-                </CardTitle>
-                <CardDescription className="text-xs">
-                  네임스페이스별 Pod 상태 요약
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="p-0">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="text-muted-foreground border-b">
-                      <th className="px-4 py-2 text-left font-medium">
-                        Namespace
-                      </th>
-                      <th className="px-2 py-2 text-center font-medium text-[#4ade80]">
-                        Run
-                      </th>
-                      <th className="px-2 py-2 text-center font-medium text-[#fbbf24]">
-                        Pend
-                      </th>
-                      <th className="px-2 py-2 text-center font-medium text-[#f87171]">
-                        Fail
-                      </th>
-                      <th className="px-2 py-2 text-center font-medium text-[#a78bfa]">
-                        Crash
-                      </th>
-                      <th className="px-4 py-2 text-left font-medium">
-                        Labels
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {podNamespaceData.map((row, idx) => (
-                      <tr
-                        key={row.ns}
-                        className={
-                          idx < podNamespaceData.length - 1 ? 'border-b' : ''
-                        }
-                      >
-                        <td className="px-4 py-2.5 font-mono font-medium">
-                          {row.ns}
-                        </td>
-                        <td className="px-2 py-2.5 text-center font-semibold text-[#4ade80]">
-                          {row.running}
-                        </td>
-                        <td className="px-2 py-2.5 text-center font-semibold text-[#fbbf24]">
-                          {row.pending || '—'}
-                        </td>
-                        <td className="px-2 py-2.5 text-center font-semibold text-[#f87171]">
-                          {row.failed || '—'}
-                        </td>
-                        <td className="px-2 py-2.5 text-center font-semibold text-[#a78bfa]">
-                          {row.crash || '—'}
-                        </td>
-                        <td className="px-4 py-2.5">
-                          <div className="flex flex-wrap gap-1">
-                            {row.labels.map(l => (
-                              <span
-                                key={l}
-                                className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[10px]"
-                              >
-                                {l}
-                              </span>
-                            ))}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </CardContent>
-            </Card>
-          </Link>
-
-          {/* 7. Storage Usage */}
-          <Link href="/dashboard/resources" className="group">
-            <Card className="h-full transition-shadow group-hover:shadow-md">
-              <CardHeader>
-                <CardTitle className="text-sm font-semibold">
-                  스토리지 사용량
-                </CardTitle>
-                <CardDescription className="text-xs">
-                  유형별 스토리지 사용량 (GB)
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={180}>
-                  <BarChart
-                    data={storageUsageData}
-                    margin={{ top: 0, right: 8, left: -20, bottom: 0 }}
-                  >
-                    <CartesianGrid
-                      strokeDasharray="3 3"
-                      stroke="hsl(var(--border))"
-                      opacity={0.8}
-                    />
-                    <XAxis
-                      dataKey="category"
-                      tick={{
-                        fontSize: 11,
-                        fill: 'hsl(var(--foreground))',
-                        opacity: 0.75,
-                      }}
-                      stroke="hsl(var(--border))"
-                    />
-                    <YAxis
-                      tick={{
-                        fontSize: 11,
-                        fill: 'hsl(var(--foreground))',
-                        opacity: 0.75,
-                      }}
-                      stroke="hsl(var(--border))"
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: '#1e293b',
-                        border: '1px solid #334155',
-                        borderRadius: '8px',
-                        fontSize: '12px',
-                        color: '#f1f5f9',
-                        boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-                        padding: '8px 12px',
-                      }}
-                      labelStyle={{ color: '#94a3b8', marginBottom: '4px' }}
-                      itemStyle={{ color: '#f1f5f9' }}
-                    />
-                    <Legend
-                      wrapperStyle={{
-                        fontSize: '11px',
-                        color: 'hsl(var(--foreground))',
-                      }}
-                    />
-                    <Bar
-                      dataKey="dataset"
-                      stackId="a"
-                      fill="#60a5fa"
-                      name="Dataset"
-                    />
-                    <Bar
-                      dataKey="model"
-                      stackId="a"
-                      fill="#a78bfa"
-                      name="Model"
-                    />
-                    <Bar
-                      dataKey="artifacts"
-                      stackId="a"
-                      fill="#4ade80"
-                      name="Artifacts"
-                    />
-                    <Bar
-                      dataKey="logs"
-                      stackId="a"
-                      fill="#fbbf24"
-                      name="Logs"
-                      radius={[4, 4, 0, 0]}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          </Link>
-
-          {/* 8. Recent Activity Timeline */}
-          <Card>
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <div>
+            {/* 네임스페이스별 Pod 상태 */}
+            <Link href="/dashboard/infrastructure" className="group">
+              <Card className="transition-shadow group-hover:shadow-md">
+                <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-semibold">
-                    최근 활동
+                    네임스페이스별 Pod 상태
                   </CardTitle>
                   <CardDescription className="text-xs">
-                    최근 이벤트 타임라인
+                    실시간 파드 상태 요약
                   </CardDescription>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="max-h-[300px] overflow-auto">
+                    <table className="w-full text-xs">
+                      <thead className="bg-background/95 sticky top-0 backdrop-blur">
+                        <tr className="text-muted-foreground border-b">
+                          <th className="px-4 py-2 text-left font-medium">
+                            Namespace
+                          </th>
+                          <th className="px-2 py-2 text-center font-medium text-[#4ade80]">
+                            Run
+                          </th>
+                          <th className="px-2 py-2 text-center font-medium text-[#fbbf24]">
+                            Pend
+                          </th>
+                          <th className="px-2 py-2 text-center font-medium text-[#f87171]">
+                            Fail
+                          </th>
+                          <th className="px-2 py-2 text-center font-medium text-[#a78bfa]">
+                            Crash
+                          </th>
+                          <th className="px-4 py-2 text-left font-medium">
+                            Labels
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {podNamespaceData.map((row, idx) => (
+                          <tr
+                            key={row.ns}
+                            className={
+                              idx < podNamespaceData.length - 1
+                                ? 'border-b'
+                                : ''
+                            }
+                          >
+                            <td className="px-4 py-2.5 font-mono font-medium">
+                              {row.ns}
+                            </td>
+                            <td className="px-2 py-2.5 text-center font-semibold text-[#4ade80]">
+                              {row.running || '—'}
+                            </td>
+                            <td className="px-2 py-2.5 text-center font-semibold text-[#fbbf24]">
+                              {row.pending || '—'}
+                            </td>
+                            <td className="px-2 py-2.5 text-center font-semibold text-[#f87171]">
+                              {row.failed || '—'}
+                            </td>
+                            <td className="px-2 py-2.5 text-center font-semibold text-[#a78bfa]">
+                              {row.crash || '—'}
+                            </td>
+                            <td className="px-4 py-2.5">
+                              <div className="flex flex-wrap gap-1">
+                                {row.labels.map((l: string) => (
+                                  <span
+                                    key={l}
+                                    className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[10px]"
+                                  >
+                                    {l}
+                                  </span>
+                                ))}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+
+            {/* 최근 활동 */}
+            <Card>
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-sm font-semibold">
+                      최근 활동
+                    </CardTitle>
+                    <CardDescription className="text-xs">
+                      최근 이벤트 타임라인
+                    </CardDescription>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Clock className="text-muted-foreground size-3.5" />
+                    <span className="text-muted-foreground text-xs">
+                      실시간
+                    </span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1">
-                  <Clock className="text-muted-foreground size-3.5" />
-                  <span className="text-muted-foreground text-xs">실시간</span>
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {ACTIVITY_FILTERS.map(f => (
+                    <button
+                      key={f.key}
+                      onClick={() => setActivityFilter(f.key)}
+                      className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                        activityFilter === f.key
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-muted text-muted-foreground hover:bg-muted/70'
+                      }`}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
                 </div>
-              </div>
-              {/* 카테고리 필터 버튼 */}
-              <div className="flex flex-wrap gap-1.5 pt-1">
-                {ACTIVITY_FILTERS.map(f => (
-                  <button
-                    key={f.key}
-                    onClick={() => setActivityFilter(f.key)}
-                    className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                      activityFilter === f.key
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-muted text-muted-foreground hover:bg-muted/70'
-                    }`}
-                  >
-                    {f.label}
-                  </button>
-                ))}
-              </div>
-            </CardHeader>
-            <CardContent className="pt-1">
-              <div className="space-y-0">
-                {filteredActivities.length === 0 ? (
-                  <p className="text-muted-foreground py-6 text-center text-xs">
-                    이벤트가 없습니다.
-                  </p>
-                ) : (
-                  filteredActivities.map((activity, idx) => (
-                    <div key={activity.id}>
-                      <Link
-                        href={activity.href}
-                        className="hover:bg-muted/50 flex items-start gap-3 rounded-md py-2.5 transition-colors"
-                      >
-                        <ActivityIcon type={activity.type} />
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm leading-snug">
-                            {activity.description}
-                          </p>
-                          <p className="text-muted-foreground mt-0.5 text-xs">
-                            {activity.time}
-                          </p>
-                        </div>
-                        <ActivityStatusBadge status={activity.status} />
-                      </Link>
-                      {idx < filteredActivities.length - 1 && <Separator />}
-                    </div>
-                  ))
-                )}
-              </div>
-            </CardContent>
-          </Card>
+              </CardHeader>
+              <CardContent className="pt-1">
+                <div className="space-y-0">
+                  {filteredActivities.length === 0 ? (
+                    <p className="text-muted-foreground py-6 text-center text-xs">
+                      이벤트가 없습니다.
+                    </p>
+                  ) : (
+                    filteredActivities.map((activity, idx) => (
+                      <div key={activity.id}>
+                        <Link
+                          href={activity.href}
+                          className="hover:bg-muted/50 flex items-start gap-3 rounded-md py-2.5 transition-colors"
+                        >
+                          <ActivityIcon type={activity.type} />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm leading-snug">
+                              {activity.description}
+                            </p>
+                            <p className="text-muted-foreground mt-0.5 text-xs">
+                              {activity.time}
+                            </p>
+                          </div>
+                          <ActivityStatusBadge status={activity.status} />
+                        </Link>
+                        {idx < filteredActivities.length - 1 && <Separator />}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </section>
     </div>
