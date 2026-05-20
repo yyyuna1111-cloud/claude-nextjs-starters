@@ -99,6 +99,8 @@ interface NodeRow {
 interface GpuDevice {
   index: number
   utilization: number
+  temperature?: number
+  power?: number
   status: GpuDeviceStatus
 }
 

@@ -1,12 +1,12 @@
 // 학습 실행 페이지 - 서버 컴포넌트
-// 학습 요청 목록을 테이블로 표시 (더미 데이터)
+// KFP API에서 run 목록 조회 (실패 시 더미 데이터 fallback)
 
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { PlusIcon } from 'lucide-react'
 
-import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { TrainRequestDialog } from '@/components/train/train-request-dialog'
 import {
   Card,
   CardContent,
@@ -160,9 +160,70 @@ function StatusBadge({ status }: { status: TrainStatus }) {
   )
 }
 
-export default function TrainPage() {
+async function fetchJobs(): Promise<TrainJob[]> {
+  const KFP_API = process.env.KFP_API
+  const KUBE_TOKEN = process.env.KFP_TOKEN ?? process.env.KUBE_TOKEN
+
+  try {
+    if (!KFP_API) throw new Error('KFP_API not configured')
+
+    console.log('[KFP] fetching runs from', `${KFP_API}/runs`)
+    const res = await fetch(`${KFP_API}/runs?page_size=50`, {
+      headers: {
+        Authorization: KUBE_TOKEN ?? '',
+        'Content-Type': 'application/json',
+      },
+      signal: AbortSignal.timeout(1000),
+      cache: 'no-store',
+    })
+
+    console.log('[KFP] response status:', res.status)
+    if (!res.ok) throw new Error(`KFP API error: ${res.status}`)
+
+    const data = await res.json()
+    console.log('[KFP] runs count:', (data.runs ?? []).length)
+
+    return (data.runs ?? []).map((run: Record<string, unknown>) => ({
+      runId: run.run_id as string,
+      projectName: (run.display_name as string)?.split('/')[0] ?? '—',
+      trainName: run.display_name as string,
+      requester: (run.service_account as string) ?? '—',
+      status: mapKfpStatus(run.state as string),
+      trainMode: '분산 학습' as TrainMode,
+      gpuCount: 0,
+      createdAt: formatDate(run.created_at as string),
+    }))
+  } catch (e) {
+    console.error('[KFP] fallback to dummy:', e)
+    return dummyJobs
+  }
+}
+
+function mapKfpStatus(state: string): TrainStatus {
+  const map: Record<string, TrainStatus> = {
+    RUNTIME_STATE_UNSPECIFIED: 'Queued',
+    PENDING: 'Queued',
+    RUNNING: 'Running',
+    SUCCEEDED: 'Succeeded',
+    FAILED: 'Failed',
+    CANCELING: 'Canceled',
+    CANCELED: 'Canceled',
+    PAUSED: 'Queued',
+  }
+  return map[state] ?? 'Queued'
+}
+
+function formatDate(iso: string): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+export default async function TrainPage() {
+  const jobs = await fetchJobs()
+
   // 상태별 집계 (요약 수치 표시용)
-  const statusCount = dummyJobs.reduce(
+  const statusCount = jobs.reduce(
     (acc, job) => {
       acc[job.status] = (acc[job.status] ?? 0) + 1
       return acc
@@ -180,16 +241,18 @@ export default function TrainPage() {
             GPU 학습 작업을 요청하고 현황을 모니터링하세요.
           </p>
         </div>
-        <Button>
-          <PlusIcon className="mr-2 size-4" />
-          학습 요청
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" asChild>
+            <Link href="/dashboard/train/code">학습 코드 작성</Link>
+          </Button>
+          <TrainRequestDialog />
+        </div>
       </div>
 
       {/* 상태 요약 배지 모음 */}
       <div className="flex flex-wrap gap-3">
         <div className="text-muted-foreground flex items-center gap-2 text-sm">
-          <span>전체 {dummyJobs.length}건</span>
+          <span>전체 {jobs.length}건</span>
         </div>
         {(
           [
@@ -232,7 +295,7 @@ export default function TrainPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {dummyJobs.map(job => (
+              {jobs.map(job => (
                 <TableRow
                   key={job.runId}
                   className="hover:bg-muted/50 cursor-pointer"

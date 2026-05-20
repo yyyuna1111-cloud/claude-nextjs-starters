@@ -1,26 +1,19 @@
 'use client'
 
-// Train 상세 페이지 - 학습 실행 상세 정보, KFP 파이프라인 단계, 메트릭 차트, 리소스 사용률, 로그 뷰어
-// TODO: KFP API - GET /apis/v2beta1/runs/{runId}
-// TODO: Prometheus - gpu_utilization{pod=~"train-.*"}
-// TODO: K8s Pod Logs - GET /api/v1/namespaces/{ns}/pods/{pod}/log
+// Train 상세 페이지 - KFP API에서 run 상세 조회
 
-import { useRef } from 'react'
+import { useRef, useEffect, useState } from 'react'
 import Link from 'next/link'
 import {
   ArrowLeftIcon,
   RefreshCwIcon,
   XCircleIcon,
-  CheckCircle2Icon,
-  LoaderCircleIcon,
-  ClockIcon,
-  CircleDotIcon,
-  AlertCircleIcon,
   DownloadIcon,
   CpuIcon,
   MemoryStickIcon,
   ActivityIcon,
   ServerIcon,
+  LoaderCircleIcon,
 } from 'lucide-react'
 import {
   LineChart,
@@ -38,6 +31,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
+import { PipelineDag } from '@/components/train/pipeline-dag'
 
 // ─── 타입 정의 ─────────────────────────────────────────────────────────────────
 
@@ -271,65 +265,6 @@ function StatusBadge({ status }: { status: TrainStatus }) {
   )
 }
 
-// 파이프라인 단계 상태 아이콘 컴포넌트
-function StepIcon({ status }: { status: StepStatus }) {
-  switch (status) {
-    case 'completed':
-      return <CheckCircle2Icon className="size-5 text-green-500" />
-    case 'running':
-      return <LoaderCircleIcon className="size-5 animate-spin text-blue-500" />
-    case 'pending':
-      return <ClockIcon className="text-muted-foreground size-5" />
-    case 'failed':
-      return <AlertCircleIcon className="text-destructive size-5" />
-  }
-}
-
-// 파이프라인 단계 카드 컴포넌트
-function PipelineStepCard({
-  step,
-  onClick,
-}: {
-  step: PipelineStep
-  onClick: () => void
-}) {
-  const stepColorClass: Record<StepStatus, string> = {
-    completed: 'border-green-500/40 bg-green-500/5',
-    running: 'border-blue-500/40 bg-blue-500/5 ring-2 ring-blue-500/20',
-    pending: 'border-border bg-muted/30',
-    failed: 'border-destructive/40 bg-destructive/5',
-  }
-  const labelColorClass: Record<StepStatus, string> = {
-    completed: 'text-green-600 dark:text-green-400',
-    running: 'text-blue-600 dark:text-blue-400',
-    pending: 'text-muted-foreground',
-    failed: 'text-destructive',
-  }
-  const statusLabel: Record<StepStatus, string> = {
-    completed: '완료',
-    running: '진행 중',
-    pending: '대기',
-    failed: '실패',
-  }
-
-  return (
-    <button
-      onClick={onClick}
-      className={`hover:bg-accent flex min-w-[120px] cursor-pointer flex-col items-center gap-2 rounded-lg border px-4 py-3 transition-colors ${stepColorClass[step.status]}`}
-      aria-label={`${step.label} 단계 로그로 이동`}
-    >
-      <StepIcon status={step.status} />
-      <span className="text-sm font-semibold">{step.label}</span>
-      <span className={`text-xs ${labelColorClass[step.status]}`}>
-        {statusLabel[step.status]}
-      </span>
-      {step.duration && (
-        <span className="text-muted-foreground text-xs">{step.duration}</span>
-      )}
-    </button>
-  )
-}
-
 // Recharts 공통 툴팁 스타일
 const tooltipStyle = {
   backgroundColor: '#1e293b',
@@ -365,25 +300,66 @@ function Sparkline({
 
 // ─── 메인 페이지 컴포넌트 ──────────────────────────────────────────────────────
 
-export default function TrainDetailPage() {
-  // 로그 섹션 ref - 파이프라인 단계 클릭 시 스크롤 이동용
+export default function TrainDetailPage({
+  params,
+}: {
+  params: Promise<{ runId: string }>
+}) {
   const logSectionRef = useRef<HTMLDivElement>(null)
 
-  // 활성 로그 탭 ref - 단계 클릭 시 해당 탭으로 전환
-  // TODO: 실제 탭 전환 로직 구현 필요 (현재는 스크롤만 동작)
-  const activeTabRef = useRef<string>('train')
+  const [runId, setRunId] = useState<string>('')
+  const [kfpRun, setKfpRun] = useState<{
+    displayName: string
+    state: string
+    createdAt: string
+    finishedAt: string | null
+    tasks: {
+      name: string
+      state: string
+      startedAt: string | null
+      finishedAt: string | null
+    }[]
+  } | null>(null)
 
-  // 파이프라인 단계 클릭 핸들러 - 해당 단계 로그로 스크롤
-  function handleStepClick(stepId: string) {
-    // TODO: 탭 상태 관리 구현 시 activeTabRef.current = stepId 처리 연동
-    activeTabRef.current = stepId
-    logSectionRef.current?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'start',
+  useEffect(() => {
+    params.then(({ runId }) => {
+      setRunId(runId)
+      fetch(`/api/train/runs/${runId}`)
+        .then(r => r.json())
+        .then(data => setKfpRun(data.run))
+        .catch(() => {})
     })
+  }, [params])
+
+  const run = {
+    runId: runId || dummyRun.runId,
+    trainName: kfpRun?.displayName ?? dummyRun.trainName,
+    projectName: dummyRun.projectName,
+    status: (kfpRun?.state ?? dummyRun.status) as TrainStatus,
+    requester: dummyRun.requester,
+    startedAt: kfpRun?.createdAt
+      ? kfpRun.createdAt.replace('T', ' ').slice(0, 16)
+      : dummyRun.startedAt,
+    endedAt: kfpRun?.finishedAt
+      ? kfpRun.finishedAt.replace('T', ' ').slice(0, 16)
+      : dummyRun.endedAt,
+    gpuCount: dummyRun.gpuCount,
+    trainMode: dummyRun.trainMode,
   }
 
-  const run = dummyRun
+  const steps: PipelineStep[] = kfpRun?.tasks?.length
+    ? kfpRun.tasks.map((t, i) => ({
+        id: t.name.toLowerCase().replace(/\s+/g, '-') || `step-${i}`,
+        name: t.name,
+        label: t.name,
+        status: t.state as StepStatus,
+        duration:
+          t.startedAt && t.finishedAt
+            ? `${Math.round((new Date(t.finishedAt).getTime() - new Date(t.startedAt).getTime()) / 1000)}s`
+            : null,
+      }))
+    : dummySteps
+
   const isRunning = run.status === 'Running' || run.status === 'Queued'
 
   return (
@@ -459,37 +435,15 @@ export default function TrainDetailPage() {
 
       <Separator />
 
-      {/* ── 1. KFP 파이프라인 단계 ────────────────────────────────── */}
-      <section aria-labelledby="pipeline-heading">
-        <h2 id="pipeline-heading" className="mb-4 text-base font-semibold">
-          KFP 파이프라인 단계
+      {/* ── 1. 파이프라인 그래프 ──────────────────────────────────── */}
+      <section aria-labelledby="dag-heading">
+        <h2 id="dag-heading" className="mb-4 text-base font-semibold">
+          파이프라인 그래프
         </h2>
-        {/* 가로 스텝 레이아웃 - 화살표로 연결 */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-2">
-          {dummySteps.map((step, idx) => (
-            <div key={step.id} className="flex shrink-0 items-center gap-2">
-              <PipelineStepCard
-                step={step}
-                onClick={() => handleStepClick(step.id)}
-              />
-              {/* 마지막 단계 이후 화살표 제거 */}
-              {idx < dummySteps.length - 1 && (
-                <div
-                  className="text-muted-foreground flex items-center"
-                  aria-hidden="true"
-                >
-                  <div className="bg-border h-px w-6" />
-                  <CircleDotIcon className="size-3" />
-                  <div className="bg-border h-px w-2" />
-                  <span className="text-base leading-none">›</span>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
+        <PipelineDag steps={steps} />
       </section>
 
-      {/* ── 2. 학습 메트릭 차트 ───────────────────────────────────── */}
+      {/* ── 3. 학습 메트릭 차트 ───────────────────────────────────── */}
       <section aria-labelledby="metrics-heading">
         <h2 id="metrics-heading" className="mb-4 text-base font-semibold">
           학습 메트릭
@@ -701,13 +655,24 @@ export default function TrainDetailPage() {
             {/* 탭 헤더 */}
             <div className="border-b px-4 pt-3">
               <TabsList className="h-8 gap-1 bg-transparent p-0">
-                {dummySteps.map(step => (
+                {steps.map(step => (
                   <TabsTrigger
                     key={step.id}
                     value={step.id}
                     className="data-[state=active]:border-primary h-8 rounded-none border-b-2 border-transparent px-3 text-xs data-[state=active]:bg-transparent data-[state=active]:shadow-none"
                   >
-                    <StepIcon status={step.status} />
+                    {step.status === 'completed' && (
+                      <span className="inline-block size-3 rounded-full bg-green-500" />
+                    )}
+                    {step.status === 'running' && (
+                      <LoaderCircleIcon className="size-3 animate-spin text-blue-500" />
+                    )}
+                    {step.status === 'pending' && (
+                      <span className="bg-muted-foreground/40 inline-block size-3 rounded-full" />
+                    )}
+                    {step.status === 'failed' && (
+                      <span className="inline-block size-3 rounded-full bg-red-500" />
+                    )}
                     <span className="ml-1.5">{step.label}</span>
                   </TabsTrigger>
                 ))}
@@ -715,7 +680,7 @@ export default function TrainDetailPage() {
             </div>
 
             {/* 탭 컨텐츠 - 터미널 스타일 로그 */}
-            {dummySteps.map(step => (
+            {steps.map(step => (
               <TabsContent key={step.id} value={step.id} className="mt-0">
                 <div
                   className="overflow-y-auto bg-slate-950 font-mono text-xs leading-relaxed text-slate-100"
