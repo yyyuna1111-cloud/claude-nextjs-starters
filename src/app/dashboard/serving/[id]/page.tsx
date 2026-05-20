@@ -57,7 +57,7 @@ interface Pod {
 export default function ISVCDetailPage() {
   const params = useParams()
   const searchParams = useSearchParams()
-  const name = params.name as string
+  const id = params.id as string
   const namespace = searchParams.get('ns') || 'default'
 
   const [pods, setPods] = useState<Pod[]>([])
@@ -76,14 +76,14 @@ export default function ISVCDetailPage() {
       if (data.error) throw new Error(data.error)
 
       // 실제 데이터가 연결되면 아래 필터링 로직을 사용합니다.
-      // const filteredPods = data.pods.filter((p: any) => p.name.includes(name))
+      // const filteredPods = data.pods.filter((p: any) => p.name.includes(id))
       // setPods(filteredPods)
 
       // 현재는 구조 구성을 위한 더미 데이터를 표시합니다.
       setTimeout(() => {
         setPods([
           {
-            name: `${name}-predictor-default-00001-deployment-7f8b9`,
+            name: `${id}-predictor-default-00001-deployment-7f8b9`,
             status: 'Running',
             node: 'gpu-node-01',
             podIp: '10.244.1.45',
@@ -91,7 +91,7 @@ export default function ISVCDetailPage() {
             age: '2d 4h',
           },
           {
-            name: `${name}-predictor-default-00001-deployment-8c2d1`,
+            name: `${id}-predictor-default-00001-deployment-8c2d1`,
             status: 'Running',
             node: 'gpu-node-02',
             podIp: '10.244.2.12',
@@ -111,7 +111,7 @@ export default function ISVCDetailPage() {
 
   useEffect(() => {
     fetchPods()
-  }, [name, namespace])
+  }, [id, namespace])
 
   return (
     <div className="space-y-6">
@@ -127,7 +127,7 @@ export default function ISVCDetailPage() {
         <div className="flex items-center justify-between">
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold tracking-tight">{name}</h1>
+              <h1 className="text-2xl font-bold tracking-tight">{id}</h1>
               <Badge variant="outline" className="text-xs font-normal">
                 {namespace}
               </Badge>

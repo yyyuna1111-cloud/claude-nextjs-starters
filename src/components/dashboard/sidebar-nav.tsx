@@ -28,8 +28,11 @@ export function SidebarNav() {
   return (
     <nav className="flex flex-col gap-1 px-2">
       {navItems.map(item => {
-        const isActive =
-          pathname === item.href || pathname.startsWith(item.href + '/')
+        // /dashboard (Overview)는 정확히 일치할 때만 활성화, 나머지는 하위 경로 포함
+        const isActive = item.href === '/dashboard' 
+          ? pathname === '/dashboard'
+          : pathname === item.href || pathname.startsWith(item.href + '/')
+        
         const Icon = item.icon
         const hasChildren = item.children && item.children.length > 0
         const isExpanded = isActive && hasChildren
