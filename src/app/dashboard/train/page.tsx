@@ -4,10 +4,10 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Suspense } from 'react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { TrainRequestDialog } from '@/components/train/train-request-dialog'
 import { TrainSearchFilter } from '@/components/train/train-search-filter'
 import {
   Card,
@@ -29,13 +29,9 @@ export const metadata: Metadata = {
   title: '학습 실행',
 }
 
-// 학습 상태 타입 정의
 type TrainStatus = 'Queued' | 'Running' | 'Succeeded' | 'Failed' | 'Canceled'
-
-// 학습 모드 타입 정의
 type TrainMode = '단일 GPU' | '분산 학습' | 'CPU 전용'
 
-// 학습 요청 데이터 타입
 interface TrainJob {
   runId: string
   projectName: string
@@ -47,7 +43,6 @@ interface TrainJob {
   createdAt: string
 }
 
-// 더미 학습 요청 데이터
 const dummyJobs: TrainJob[] = [
   {
     runId: 'run-20240101-001',
@@ -119,47 +114,71 @@ const dummyJobs: TrainJob[] = [
     gpuCount: 1,
     createdAt: '2026-05-15 10:05',
   },
+  {
+    runId: 'run-20240101-008',
+    projectName: 'LLM 파인튜닝',
+    trainName: 'LLaMA3 LoRA 학습',
+    requester: '박민준',
+    status: 'Succeeded',
+    trainMode: '분산 학습',
+    gpuCount: 8,
+    createdAt: '2026-05-13 10:00',
+  },
+  {
+    runId: 'run-20240101-009',
+    projectName: '시계열 예측',
+    trainName: 'Transformer 시계열',
+    requester: '정다은',
+    status: 'Running',
+    trainMode: '단일 GPU',
+    gpuCount: 1,
+    createdAt: '2026-05-15 11:30',
+  },
+  {
+    runId: 'run-20240101-010',
+    projectName: '이상 탐지',
+    trainName: 'AutoEncoder 학습',
+    requester: '최수진',
+    status: 'Queued',
+    trainMode: 'CPU 전용',
+    gpuCount: 0,
+    createdAt: '2026-05-15 12:00',
+  },
+  {
+    runId: 'run-20240101-011',
+    projectName: '멀티모달',
+    trainName: 'CLIP 파인튜닝',
+    requester: '김철수',
+    status: 'Failed',
+    trainMode: '분산 학습',
+    gpuCount: 4,
+    createdAt: '2026-05-12 09:00',
+  },
+  {
+    runId: 'run-20240101-012',
+    projectName: '번역 모델',
+    trainName: 'NLLB 파인튜닝',
+    requester: '이영희',
+    status: 'Succeeded',
+    trainMode: '단일 GPU',
+    gpuCount: 2,
+    createdAt: '2026-05-11 15:20',
+  },
 ]
 
-// 상태별 배지 스타일 및 레이블 매핑
 function StatusBadge({ status }: { status: TrainStatus }) {
   const config: Record<
     TrainStatus,
-    {
-      variant: 'default' | 'secondary' | 'destructive' | 'outline'
-      className: string
-    }
+    { variant: 'default' | 'secondary' | 'destructive' | 'outline'; className: string }
   > = {
-    Queued: {
-      variant: 'outline',
-      className: 'border-yellow-400 text-yellow-600 dark:text-yellow-400',
-    },
-    Running: {
-      variant: 'default',
-      className: 'bg-blue-500 hover:bg-blue-500 text-white border-transparent',
-    },
-    Succeeded: {
-      variant: 'default',
-      className:
-        'bg-green-500 hover:bg-green-500 text-white border-transparent',
-    },
-    Failed: {
-      variant: 'destructive',
-      className: '',
-    },
-    Canceled: {
-      variant: 'secondary',
-      className: 'text-muted-foreground',
-    },
+    Queued: { variant: 'outline', className: 'border-yellow-400 text-yellow-600 dark:text-yellow-400' },
+    Running: { variant: 'default', className: 'bg-blue-500 hover:bg-blue-500 text-white border-transparent' },
+    Succeeded: { variant: 'default', className: 'bg-green-500 hover:bg-green-500 text-white border-transparent' },
+    Failed: { variant: 'destructive', className: '' },
+    Canceled: { variant: 'secondary', className: 'text-muted-foreground' },
   }
-
   const { variant, className } = config[status]
-
-  return (
-    <Badge variant={variant} className={className}>
-      {status}
-    </Badge>
-  )
+  return <Badge variant={variant} className={className}>{status}</Badge>
 }
 
 async function fetchJobs(): Promise<TrainJob[]> {
@@ -169,22 +188,15 @@ async function fetchJobs(): Promise<TrainJob[]> {
   try {
     if (!KFP_API) throw new Error('KFP_API not configured')
 
-    console.log('[KFP] fetching runs from', `${KFP_API}/runs`)
     const res = await fetch(`${KFP_API}/runs?page_size=50`, {
-      headers: {
-        Authorization: KUBE_TOKEN ?? '',
-        'Content-Type': 'application/json',
-      },
+      headers: { Authorization: KUBE_TOKEN ?? '', 'Content-Type': 'application/json' },
       signal: AbortSignal.timeout(1000),
       cache: 'no-store',
     })
 
-    console.log('[KFP] response status:', res.status)
     if (!res.ok) throw new Error(`KFP API error: ${res.status}`)
 
     const data = await res.json()
-    console.log('[KFP] runs count:', (data.runs ?? []).length)
-
     return (data.runs ?? []).map((run: Record<string, unknown>) => ({
       runId: run.run_id as string,
       projectName: (run.display_name as string)?.split('/')[0] ?? '—',
@@ -195,8 +207,8 @@ async function fetchJobs(): Promise<TrainJob[]> {
       gpuCount: 0,
       createdAt: formatDate(run.created_at as string),
     }))
-  } catch (e) {
-    console.error('[KFP] fallback to dummy:', e)
+  } catch {
+    console.log('[KFP] fallback to dummy data')
     return dummyJobs
   }
 }
@@ -221,15 +233,17 @@ function formatDate(iso: string): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
+const PAGE_SIZE = 10
+
 export default async function TrainPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string; mode?: string; from?: string; to?: string }>
+  searchParams: Promise<{ q?: string; status?: string; mode?: string; from?: string; to?: string; page?: string }>
 }) {
-  const { q, status, mode, from, to } = await searchParams
+  const { q, status, mode, from, to, page: pageParam } = await searchParams
   const allJobs = await fetchJobs()
 
-  const jobs = allJobs.filter(job => {
+  const filtered = allJobs.filter(job => {
     if (q && !`${job.projectName} ${job.trainName} ${job.requester}`.toLowerCase().includes(q.toLowerCase())) return false
     if (status && status !== 'all' && job.status !== status) return false
     if (mode && mode !== 'all' && job.trainMode !== mode) return false
@@ -238,52 +252,45 @@ export default async function TrainPage({
     return true
   })
 
-  // 상태별 집계 (요약 수치 표시용)
-  const statusCount = jobs.reduce(
-    (acc, job) => {
-      acc[job.status] = (acc[job.status] ?? 0) + 1
-      return acc
-    },
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
+  const currentPage = Math.min(Math.max(1, Number(pageParam ?? 1)), totalPages || 1)
+  const jobs = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+
+  const statusCount = allJobs.reduce(
+    (acc, job) => { acc[job.status] = (acc[job.status] ?? 0) + 1; return acc },
     {} as Record<TrainStatus, number>
   )
+
+  function pageUrl(p: number) {
+    const params = new URLSearchParams()
+    if (q) params.set('q', q)
+    if (status) params.set('status', status)
+    if (mode) params.set('mode', mode)
+    if (from) params.set('from', from)
+    if (to) params.set('to', to)
+    params.set('page', String(p))
+    return `/dashboard/train?${params.toString()}`
+  }
 
   return (
     <div className="space-y-6">
       {/* 페이지 헤더 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">학습 실행</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            GPU 학습 작업을 요청하고 현황을 모니터링하세요.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" asChild>
-            <Link href="/dashboard/train/code">학습 코드 작성</Link>
-          </Button>
-          <TrainRequestDialog />
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">학습 실행</h1>
+        <p className="text-muted-foreground mt-1 text-sm">
+          GPU 학습 작업을 요청하고 현황을 모니터링하세요.
+        </p>
       </div>
 
       {/* 상태 요약 배지 모음 */}
       <div className="flex flex-wrap gap-3">
         <div className="text-muted-foreground flex items-center gap-2 text-sm">
-          <span>전체 {jobs.length}건</span>
+          <span>전체 {allJobs.length}건</span>
         </div>
-        {(
-          [
-            'Running',
-            'Queued',
-            'Succeeded',
-            'Failed',
-            'Canceled',
-          ] as TrainStatus[]
-        ).map(status => (
-          <div key={status} className="flex items-center gap-1.5">
-            <StatusBadge status={status} />
-            <span className="text-muted-foreground text-sm">
-              {statusCount[status] ?? 0}
-            </span>
+        {(['Running', 'Queued', 'Succeeded', 'Failed', 'Canceled'] as TrainStatus[]).map(s => (
+          <div key={s} className="flex items-center gap-1.5">
+            <StatusBadge status={s} />
+            <span className="text-muted-foreground text-sm">{statusCount[s] ?? 0}</span>
           </div>
         ))}
       </div>
@@ -291,8 +298,8 @@ export default async function TrainPage({
       {/* 학습 요청 목록 테이블 */}
       <Card>
         <CardHeader className="border-b">
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex items-center justify-between gap-4">
+            <div className="shrink-0">
               <CardTitle className="text-base">학습 요청 목록</CardTitle>
               <CardDescription className="text-xs">
                 최근 학습 실행 요청 이력입니다.
@@ -318,45 +325,81 @@ export default async function TrainPage({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {jobs.map(job => (
-                <TableRow
-                  key={job.runId}
-                  className="hover:bg-muted/50 cursor-pointer"
-                >
-                  {/* Run ID - 상세 페이지 링크 + 모노스페이스 폰트 */}
-                  <TableCell className="text-muted-foreground font-mono text-xs">
-                    <Link
-                      href={`/dashboard/train/${job.runId}`}
-                      className="hover:text-foreground underline-offset-4 transition-colors hover:underline"
-                    >
-                      {job.runId}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="font-medium">
-                    <Link
-                      href={`/dashboard/train/${job.runId}`}
-                      className="underline-offset-4 hover:underline"
-                    >
-                      {job.projectName}
-                    </Link>
-                  </TableCell>
-                  <TableCell>{job.trainName}</TableCell>
-                  <TableCell>{job.requester}</TableCell>
-                  <TableCell>
-                    <StatusBadge status={job.status} />
-                  </TableCell>
-                  <TableCell>{job.trainMode}</TableCell>
-                  <TableCell className="text-right">
-                    {/* GPU가 없는 경우 '-' 표시 */}
-                    {job.gpuCount > 0 ? job.gpuCount : '-'}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground text-xs">
-                    {job.createdAt}
+              {jobs.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-muted-foreground py-10 text-center text-sm">
+                    검색 결과가 없습니다.
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : (
+                jobs.map(job => (
+                  <TableRow key={job.runId} className="hover:bg-muted/50 cursor-pointer">
+                    <TableCell className="text-muted-foreground font-mono text-xs">
+                      <Link
+                        href={`/dashboard/train/${job.runId}`}
+                        className="hover:text-foreground underline-offset-4 transition-colors hover:underline"
+                      >
+                        {job.runId}
+                      </Link>
+                    </TableCell>
+                    <TableCell className="font-medium">
+                      <Link href={`/dashboard/train/${job.runId}`} className="underline-offset-4 hover:underline">
+                        {job.projectName}
+                      </Link>
+                    </TableCell>
+                    <TableCell>{job.trainName}</TableCell>
+                    <TableCell>{job.requester}</TableCell>
+                    <TableCell><StatusBadge status={job.status} /></TableCell>
+                    <TableCell>{job.trainMode}</TableCell>
+                    <TableCell className="text-right">{job.gpuCount > 0 ? job.gpuCount : '-'}</TableCell>
+                    <TableCell className="text-muted-foreground text-xs">{job.createdAt}</TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
+
+          {/* 페이지네이션 */}
+          {totalPages > 1 && (
+            <div className="border-t py-3 flex flex-col items-center gap-1">
+              <div className="flex items-center gap-1">
+                <Button variant="outline" size="sm" className="h-7 w-7 p-0" disabled={currentPage === 1} asChild={currentPage !== 1}>
+                  {currentPage !== 1 ? (
+                    <Link href={pageUrl(currentPage - 1)}><ChevronLeft className="h-4 w-4" /></Link>
+                  ) : (
+                    <span><ChevronLeft className="h-4 w-4" /></span>
+                  )}
+                </Button>
+                {(() => {
+                  const SHOW = 5
+                  let start = Math.max(1, currentPage - Math.floor(SHOW / 2))
+                  const end = Math.min(totalPages, start + SHOW - 1)
+                  start = Math.max(1, end - SHOW + 1)
+                  return Array.from({ length: end - start + 1 }, (_, i) => start + i).map(p => (
+                    <Button
+                      key={p}
+                      variant={p === currentPage ? 'default' : 'outline'}
+                      size="sm"
+                      className="h-7 w-7 p-0 text-xs"
+                      asChild={p !== currentPage}
+                    >
+                      {p !== currentPage ? <Link href={pageUrl(p)}>{p}</Link> : <span>{p}</span>}
+                    </Button>
+                  ))
+                })()}
+                <Button variant="outline" size="sm" className="h-7 w-7 p-0" disabled={currentPage === totalPages} asChild={currentPage !== totalPages}>
+                  {currentPage !== totalPages ? (
+                    <Link href={pageUrl(currentPage + 1)}><ChevronRight className="h-4 w-4" /></Link>
+                  ) : (
+                    <span><ChevronRight className="h-4 w-4" /></span>
+                  )}
+                </Button>
+              </div>
+              <span className="text-muted-foreground text-xs">
+                총 {filtered.length}건
+              </span>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
