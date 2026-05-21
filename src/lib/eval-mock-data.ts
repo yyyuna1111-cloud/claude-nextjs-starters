@@ -393,3 +393,160 @@ export const ragFlowData = [
   { category: '내부정책',    통과: 52, 실패: 4  },
   { category: '제품/서비스', 통과: 30, 실패: 2  },
 ]
+
+// ── RAG 버전별 지표 ───────────────────────────────────────────────────────────
+
+export const ragVersions = ['v2.3.1', 'v2.3.0', 'v2.2.0', 'v2.1.5'] as const
+export type RagVersion = typeof ragVersions[number]
+
+export interface RagVersionKpi {
+  passRate: number
+  ragasScore: number
+  contextRecall: number
+  contextPrecision: number
+  faithfulness: number
+  answerRelevancy: number
+  avgDurationSec: number
+  costUsd: number
+  dataset: string
+  datasetSize: number
+  gate: 'passed' | 'blocked'
+}
+
+export const ragVersionKpi: Record<RagVersion, RagVersionKpi> = {
+  'v2.3.1': {
+    passRate: 91.7, ragasScore: 0.864, contextRecall: 0.874, contextPrecision: 0.812,
+    faithfulness: 0.903, answerRelevancy: 0.867, avgDurationSec: 312, costUsd: 3.24,
+    dataset: 'rag-testset-v3.2', datasetSize: 240, gate: 'passed',
+  },
+  'v2.3.0': {
+    passRate: 74.5, ragasScore: 0.761, contextRecall: 0.791, contextPrecision: 0.743,
+    faithfulness: 0.782, answerRelevancy: 0.754, avgDurationSec: 298, costUsd: 2.81,
+    dataset: 'rag-testset-v3.1', datasetSize: 200, gate: 'blocked',
+  },
+  'v2.2.0': {
+    passRate: 88.0, ragasScore: 0.843, contextRecall: 0.851, contextPrecision: 0.798,
+    faithfulness: 0.881, answerRelevancy: 0.842, avgDurationSec: 289, costUsd: 2.73,
+    dataset: 'rag-testset-v3.1', datasetSize: 200, gate: 'passed',
+  },
+  'v2.1.5': {
+    passRate: 83.2, ragasScore: 0.811, contextRecall: 0.822, contextPrecision: 0.771,
+    faithfulness: 0.844, answerRelevancy: 0.809, avgDurationSec: 302, costUsd: 2.58,
+    dataset: 'rag-testset-v3.0', datasetSize: 180, gate: 'passed',
+  },
+}
+
+export const ragVersionRadar: Record<RagVersion, { metric: string; current: number; previous: number }[]> = {
+  'v2.3.1': [
+    { metric: 'Pass Rate',    current: 91.7, previous: 88.0 },
+    { metric: 'C.Recall',     current: 87.4, previous: 85.1 },
+    { metric: 'C.Precision',  current: 81.2, previous: 79.8 },
+    { metric: 'Faithfulness', current: 90.3, previous: 88.1 },
+    { metric: 'A.Relevancy',  current: 86.7, previous: 84.2 },
+  ],
+  'v2.3.0': [
+    { metric: 'Pass Rate',    current: 74.5, previous: 88.0 },
+    { metric: 'C.Recall',     current: 79.1, previous: 85.1 },
+    { metric: 'C.Precision',  current: 74.3, previous: 79.8 },
+    { metric: 'Faithfulness', current: 78.2, previous: 88.1 },
+    { metric: 'A.Relevancy',  current: 75.4, previous: 84.2 },
+  ],
+  'v2.2.0': [
+    { metric: 'Pass Rate',    current: 88.0, previous: 83.2 },
+    { metric: 'C.Recall',     current: 85.1, previous: 82.2 },
+    { metric: 'C.Precision',  current: 79.8, previous: 77.1 },
+    { metric: 'Faithfulness', current: 88.1, previous: 84.4 },
+    { metric: 'A.Relevancy',  current: 84.2, previous: 80.9 },
+  ],
+  'v2.1.5': [
+    { metric: 'Pass Rate',    current: 83.2, previous: 79.0 },
+    { metric: 'C.Recall',     current: 82.2, previous: 78.5 },
+    { metric: 'C.Precision',  current: 77.1, previous: 74.0 },
+    { metric: 'Faithfulness', current: 84.4, previous: 80.1 },
+    { metric: 'A.Relevancy',  current: 80.9, previous: 77.3 },
+  ],
+}
+
+export const ragVersionDailyTrend: Record<RagVersion, { day: string; passRate: number; faithfulness: number; ragasScore: number }[]> = {
+  'v2.3.1': [
+    { day: '05/11', passRate: 89.5, faithfulness: 88.1, ragasScore: 84.3 },
+    { day: '05/12', passRate: 90.2, faithfulness: 88.9, ragasScore: 85.0 },
+    { day: '05/13', passRate: 90.8, faithfulness: 89.5, ragasScore: 85.5 },
+    { day: '05/14', passRate: 91.2, faithfulness: 90.1, ragasScore: 86.1 },
+    { day: '05/15', passRate: 91.7, faithfulness: 90.3, ragasScore: 86.4 },
+  ],
+  'v2.3.0': [
+    { day: '05/09', passRate: 72.0, faithfulness: 76.5, ragasScore: 74.2 },
+    { day: '05/10', passRate: 73.1, faithfulness: 77.2, ragasScore: 75.0 },
+    { day: '05/11', passRate: 73.8, faithfulness: 77.8, ragasScore: 75.5 },
+    { day: '05/12', passRate: 74.2, faithfulness: 78.0, ragasScore: 76.0 },
+    { day: '05/13', passRate: 74.5, faithfulness: 78.2, ragasScore: 76.1 },
+  ],
+  'v2.2.0': [
+    { day: '05/06', passRate: 85.5, faithfulness: 86.0, ragasScore: 82.1 },
+    { day: '05/07', passRate: 86.2, faithfulness: 86.8, ragasScore: 82.9 },
+    { day: '05/08', passRate: 87.0, faithfulness: 87.5, ragasScore: 83.5 },
+    { day: '05/09', passRate: 87.5, faithfulness: 88.0, ragasScore: 84.0 },
+    { day: '05/10', passRate: 88.0, faithfulness: 88.1, ragasScore: 84.3 },
+  ],
+  'v2.1.5': [
+    { day: '04/28', passRate: 81.0, faithfulness: 82.5, ragasScore: 79.0 },
+    { day: '04/29', passRate: 81.8, faithfulness: 83.2, ragasScore: 79.8 },
+    { day: '04/30', passRate: 82.3, faithfulness: 83.8, ragasScore: 80.5 },
+    { day: '05/01', passRate: 82.8, faithfulness: 84.2, ragasScore: 81.0 },
+    { day: '05/02', passRate: 83.2, faithfulness: 84.4, ragasScore: 81.1 },
+  ],
+}
+
+// InferenceService 모니터링 mock 데이터
+export const inferenceServices = ['tei-embed-test', 'tei-embed-prod', 'tei-embed-staging']
+
+export interface InferenceServicePodStatus {
+  desired: number
+  ready: number
+  available: number
+}
+
+export const inferenceServicePodStatus: Record<string, InferenceServicePodStatus> = {
+  'tei-embed-test':    { desired: 1, ready: 1, available: 1 },
+  'tei-embed-prod':    { desired: 3, ready: 3, available: 3 },
+  'tei-embed-staging': { desired: 1, ready: 1, available: 1 },
+}
+
+export const inferenceServiceQueueSize: Record<string, number> = {
+  'tei-embed-test':    0,
+  'tei-embed-prod':    2,
+  'tei-embed-staging': 0,
+}
+
+export const inferenceService429Rate: Record<string, number | null> = {
+  'tei-embed-test':    null,
+  'tei-embed-prod':    0.12,
+  'tei-embed-staging': null,
+}
+
+const TIMES = ['05:00','05:30','06:00','06:30','07:00','07:30','08:00','08:30','09:00','09:30','10:00','10:30']
+
+export const inferenceQueueSizeHistory = TIMES.map((time, i) => ({
+  time,
+  queueSize: [0,0,1,0,0,2,1,0,0,0,1,0][i],
+}))
+
+export const inferenceQueueLatencyHistory = TIMES.map((time, i) => ({
+  time,
+  p50: [0,0,12,0,0,18,14,0,0,0,10,0][i],
+  p95: [0,0,28,0,0,42,31,0,0,0,23,0][i],
+  p99: [0,0,55,0,0,80,60,0,0,0,45,0][i],
+}))
+
+export const inferenceRpsHistory = TIMES.map((time, i) => ({
+  time,
+  rps: [0.05,0.08,0.13,0.10,0.09,0.15,0.13,0.11,0.09,0.10,0.13,0.08][i],
+}))
+
+export const inferenceHttpStatusRpsHistory = TIMES.map((time, i) => ({
+  time,
+  s200: [0.05,0.08,0.13,0.10,0.09,0.13,0.13,0.11,0.09,0.10,0.13,0.08][i],
+  s404: [0,0,0,0,0,0,0,0,0,0,0,0][i],
+  s503: [0,0,0,0,0,0.02,0,0,0,0,0,0][i],
+}))

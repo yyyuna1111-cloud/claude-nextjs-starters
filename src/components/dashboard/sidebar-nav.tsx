@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Play, Server, FlaskConical, Box, ChevronDown, Network } from 'lucide-react'
+import { LayoutDashboard, Play, Server, FlaskConical, ChevronDown, Network } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 
@@ -10,15 +10,7 @@ const navItems = [
   { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
   { href: '/dashboard/train', label: 'Train', icon: Play },
   { href: '/dashboard/serving', label: 'Serving & Deployment', icon: Server },
-  {
-    href: '/dashboard/evaluation',
-    label: 'Evaluation',
-    icon: FlaskConical,
-    children: [
-      { href: '/dashboard/evaluation/embedding', label: '임베딩 모델', icon: Box },
-      { href: '/dashboard/evaluation/rag',       label: 'RAG 평가',   icon: FlaskConical },
-    ],
-  },
+  { href: '/dashboard/evaluation', label: 'RAG Evaluation', icon: FlaskConical },
   { href: '/dashboard/infrastructure', label: 'Infrastructure', icon: Network },
 ]
 
