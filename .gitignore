@@ -1,0 +1,14 @@
+# Environment variables
+.env.local
+.env*.local
+
+# Next.js build output
+.next/
+out/
+
+# Node modules
+node_modules/
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts

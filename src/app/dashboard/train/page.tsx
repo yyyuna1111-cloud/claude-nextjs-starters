@@ -3,10 +3,12 @@
 
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { Suspense } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { TrainRequestDialog } from '@/components/train/train-request-dialog'
+import { TrainSearchFilter } from '@/components/train/train-search-filter'
 import {
   Card,
   CardContent,
@@ -219,8 +221,22 @@ function formatDate(iso: string): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-export default async function TrainPage() {
-  const jobs = await fetchJobs()
+export default async function TrainPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; status?: string; mode?: string; from?: string; to?: string }>
+}) {
+  const { q, status, mode, from, to } = await searchParams
+  const allJobs = await fetchJobs()
+
+  const jobs = allJobs.filter(job => {
+    if (q && !`${job.projectName} ${job.trainName} ${job.requester}`.toLowerCase().includes(q.toLowerCase())) return false
+    if (status && status !== 'all' && job.status !== status) return false
+    if (mode && mode !== 'all' && job.trainMode !== mode) return false
+    if (from && job.createdAt < from) return false
+    if (to && job.createdAt.slice(0, 10) > to) return false
+    return true
+  })
 
   // 상태별 집계 (요약 수치 표시용)
   const statusCount = jobs.reduce(
@@ -275,10 +291,17 @@ export default async function TrainPage() {
       {/* 학습 요청 목록 테이블 */}
       <Card>
         <CardHeader className="border-b">
-          <CardTitle className="text-base">학습 요청 목록</CardTitle>
-          <CardDescription className="text-xs">
-            최근 학습 실행 요청 이력입니다.
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-base">학습 요청 목록</CardTitle>
+              <CardDescription className="text-xs">
+                최근 학습 실행 요청 이력입니다.
+              </CardDescription>
+            </div>
+            <Suspense fallback={null}>
+              <TrainSearchFilter />
+            </Suspense>
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
