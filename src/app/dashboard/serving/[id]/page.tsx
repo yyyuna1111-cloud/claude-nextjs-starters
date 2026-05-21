@@ -33,6 +33,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Skeleton } from '@/components/ui/skeleton'
+import { ResourceTree, type ArgoNode } from '@/components/dashboard/resource-tree'
 
 import {
   LineChart,
@@ -66,6 +67,7 @@ export default function ISVCDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activeResourceTab, setActiveResourceTab] = useState<'cpu' | 'memory' | 'gpu' | 'gpu_mem'>('cpu')
+  const [treeNodes, setTreeNodes] = useState<ArgoNode[]>([])
 
   const fetchPods = async () => {
     setLoading(true)
@@ -97,6 +99,70 @@ export default function ISVCDetailPage() {
             age: '1d 12h',
           },
         ])
+
+        // 배포 구조도 더미 데이터 (Argo CD v1alpha1ApplicationTree 스키마 준수)
+        setTreeNodes([
+          { 
+            uid: 'isvc-001', 
+            name: id, 
+            kind: 'InferenceService', 
+            group: 'serving.kserve.io',
+            version: 'v1beta1',
+            health: { status: 'Healthy' } 
+          },
+          { 
+            uid: 'pred-001', 
+            name: `${id}-predictor`, 
+            kind: 'Predictor', 
+            group: 'serving.kserve.io',
+            version: 'v1beta1',
+            health: { status: 'Healthy' }, 
+            parentRefs: [{ uid: 'isvc-001', kind: 'InferenceService', name: id }] 
+          },
+          { 
+            uid: 'svc-001', 
+            name: `${id}-predictor-default`, 
+            kind: 'Service', 
+            version: 'v1',
+            health: { status: 'Healthy' }, 
+            parentRefs: [{ uid: 'pred-001', kind: 'Predictor', name: `${id}-predictor` }] 
+          },
+          { 
+            uid: 'deploy-001', 
+            name: `${id}-predictor-default-00001-deployment`, 
+            kind: 'Deployment', 
+            group: 'apps',
+            version: 'v1',
+            health: { status: 'Healthy' }, 
+            parentRefs: [{ uid: 'svc-001', kind: 'Service', name: `${id}-predictor-default` }] 
+          },
+          { 
+            uid: 'rs-001', 
+            name: `${id}-predictor-default-00001-7f8b9`, 
+            kind: 'ReplicaSet', 
+            group: 'apps',
+            version: 'v1',
+            health: { status: 'Healthy' }, 
+            parentRefs: [{ uid: 'deploy-001', kind: 'Deployment', name: `${id}-predictor-default-00001-deployment` }] 
+          },
+          { 
+            uid: 'pod-001', 
+            name: `${id}-predictor-default-00001-deployment-7f8b9-abcd`, 
+            kind: 'Pod', 
+            version: 'v1',
+            health: { status: 'Healthy' }, 
+            parentRefs: [{ uid: 'rs-001', kind: 'ReplicaSet', name: `${id}-predictor-default-00001-7f8b9` }] 
+          },
+          { 
+            uid: 'pod-002', 
+            name: `${id}-predictor-default-00001-deployment-7f8b9-efgh`, 
+            kind: 'Pod', 
+            version: 'v1',
+            health: { status: 'Healthy' }, 
+            parentRefs: [{ uid: 'rs-001', kind: 'ReplicaSet', name: `${id}-predictor-default-00001-7f8b9` }] 
+          },
+        ])
+
         setLoading(false)
       }, 500)
 
@@ -183,6 +249,19 @@ export default function ISVCDetailPage() {
           </CardHeader>
         </Card>
       </div>
+
+      {/* 배포 구조도 */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">배포 구조도 (Deployment Tree)</CardTitle>
+          <CardDescription>
+            Argo CD 리소스 계층 구조를 기반으로 한 배포 관계 시각화입니다.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ResourceTree nodes={treeNodes} />
+        </CardContent>
+      </Card>
 
       {/* Pod 리스트 테이블 */}
       <Card>
