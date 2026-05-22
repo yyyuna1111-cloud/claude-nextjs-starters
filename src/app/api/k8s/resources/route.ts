@@ -1,132 +1,125 @@
 import { NextResponse } from 'next/server'
+import { env } from '@/lib/env'
 
-const RANCHER_URL = process.env.RANCHER_URL
-const RANCHER_TOKEN = process.env.RANCHER_TOKEN
-const CLUSTER_ID = process.env.RANCHER_CLUSTER_ID
+const K8S_API_URL = env.K8S_API_URL
+const K8S_TOKEN = env.K8S_TOKEN
 
-const base = `${RANCHER_URL}/k8s/clusters/${CLUSTER_ID}`
 const headers = {
-  Authorization: `Bearer ${RANCHER_TOKEN ?? ''}`,
+  Authorization: `Bearer ${K8S_TOKEN}`,
   'Content-Type': 'application/json',
 }
 
 export async function GET() {
   try {
-    if (!RANCHER_URL || !CLUSTER_ID) {
-      return NextResponse.json(getDummyData())
+    if (!K8S_API_URL || !K8S_TOKEN) {
+      throw new Error('Kubernetes API configuration is missing')
     }
 
-    const [nodesRes, podsRes, isvcRes] = await Promise.all([
-      fetch(`${base}/api/v1/nodes`, { headers, signal: AbortSignal.timeout(5000), next: { revalidate: 0 } }),
-      fetch(`${base}/api/v1/pods`, { headers, signal: AbortSignal.timeout(5000), next: { revalidate: 0 } }),
-      fetch(`${base}/apis/serving.kserve.io/v1beta1/inferenceservices`, { headers, signal: AbortSignal.timeout(5000), next: { revalidate: 0 } }),
+    if (env.K8S_SKIP_TLS_VERIFY === 'true') {
+      process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
+    }
+
+    // 타임아웃을 10초로 연장
+    const timeout = 10000
+
+    const [pvcRes, podsRes] = await Promise.all([
+      fetch(`${K8S_API_URL}/api/v1/persistentvolumeclaims`, { 
+        headers, 
+        signal: AbortSignal.timeout(timeout), 
+        next: { revalidate: 0 } 
+      }),
+      fetch(`${K8S_API_URL}/api/v1/pods`, { 
+        headers, 
+        signal: AbortSignal.timeout(timeout), 
+        next: { revalidate: 0 } 
+      }),
     ])
 
-    if (!nodesRes.ok || !podsRes.ok) {
-      return NextResponse.json(getDummyData())
+    if (!pvcRes.ok || !podsRes.ok) {
+      const pvcErr = !pvcRes.ok ? `PVC: ${pvcRes.status}` : ''
+      const podErr = !podsRes.ok ? `Pods: ${podsRes.status}` : ''
+      throw new Error(`K8s API responded with error: ${pvcErr} ${podErr}`)
     }
 
-    const [nodesData, podsData, isvcData] = await Promise.all([
-      nodesRes.json(),
+    const [pvcData, podsData] = await Promise.all([
+      pvcRes.json(),
       podsRes.json(),
-      isvcRes.ok ? isvcRes.json() : { items: [] },
     ])
 
-    // 노드 처리
-    const nodes = (nodesData.items || []).map((node: any) => {
-      const labels = node.metadata?.labels || {}
-      const status = node.status || {}
-      const capacity = status.capacity || {}
-      const allocatable = status.allocatable || {}
-      const capacityKi = parseInt(capacity.memory?.replace('Ki', '') || '0')
-      const allocatableKi = parseInt(allocatable.memory?.replace('Ki', '') || '0')
-      const usedPercent = capacityKi > 0 ? Math.round(((capacityKi - allocatableKi) / capacityKi) * 100) : 0
+    const pvcItems = pvcData?.items || []
+    const podItems = podsData?.items || []
 
-      return {
-        node: node.metadata?.name || 'Unknown',
-        used: usedPercent,
-        free: 100 - usedPercent,
-        type: labels['node-role.kubernetes.io/control-plane'] !== undefined ? 'Master' : 'Worker',
-        isGpu: labels['nvidia.com/gpu'] !== undefined,
-      }
-    })
-
-    // ISVC 처리
-    const isvcs = (isvcData.items || []).map((isvc: any) => {
-      const meta = isvc.metadata || {}
-      const status = isvc.status || {}
-      const conditions = status.conditions || []
-      const readyCond = conditions.find((c: any) => c.type === 'Ready')
-      
-      const relatedPod = (podsData.items || []).find((p: any) => 
-        p.metadata?.namespace === meta.namespace && 
-        p.metadata?.name?.includes(meta.name)
-      )
-
-      return {
-        name: meta.name || 'Unknown',
-        namespace: meta.namespace || 'default',
-        status: readyCond?.status === 'True' ? 'Ready' : 'NotReady',
-        node: relatedPod?.spec?.nodeName || 'Pending',
-        createdAt: meta.creationTimestamp || new Date().toISOString(),
-      }
-    })
-
-    // 네임스페이스 통계
-    const nsStats: Record<string, any> = {}
-    ;(podsData.items || []).forEach((pod: any) => {
+    // 1. 현재 사용 중인 PVC 이름 세트 생성
+    const usedPvcNames = new Set<string>()
+    podItems.forEach((pod: any) => {
       const ns = pod.metadata?.namespace || 'default'
-      if (!nsStats[ns]) nsStats[ns] = { ns, running: 0, pending: 0, failed: 0, crash: 0, labels: [] }
-      
-      const phase = pod.status?.phase
-      if (phase === 'Running') nsStats[ns].running++
-      else if (phase === 'Pending') nsStats[ns].pending++
-      else if (phase === 'Failed') nsStats[ns].failed++
+      ;(pod.spec?.volumes || []).forEach((vol: any) => {
+        if (vol.persistentVolumeClaim?.claimName) {
+          usedPvcNames.add(`${ns}/${vol.persistentVolumeClaim.claimName}`)
+        }
+      })
+    })
 
-      const appLabel = pod.metadata?.labels?.app
-      if (appLabel && !nsStats[ns].labels.includes(appLabel)) nsStats[ns].labels.push(appLabel)
+    // 2. PVC 데이터 처리 및 Orphaned 여부 판별
+    let orphanedCount = 0
+    let orphanedBytes = 0
+    let totalReservedBytes = 0
+
+    const pvcs = pvcItems.map((pvc: any) => {
+      const name = pvc.metadata?.name || 'Unknown'
+      const ns = pvc.metadata?.namespace || 'default'
+      const capacityStr = pvc.status?.capacity?.storage || '0'
+      const capacityBytes = parseStorageToBytes(capacityStr)
+      const isUsed = usedPvcNames.has(`${ns}/${name}`)
+
+      totalReservedBytes += capacityBytes
+      if (!isUsed && pvc.status?.phase === 'Bound') {
+        orphanedCount++
+        orphanedBytes += capacityBytes
+      }
+
+      return {
+        name,
+        namespace: ns,
+        capacity: capacityStr,
+        isUsed,
+        status: pvc.status?.phase || 'Unknown',
+        yaml: JSON.stringify(pvc, null, 2),
+      }
     })
 
     return NextResponse.json({
-      nodes,
-      isvcs,
-      namespaces: Object.values(nsStats).map((n: any) => ({ ...n, labels: n.labels.slice(0, 2) })),
-      totalPods: podsData.items.length,
-      unhealthyPods: 0,
+      pvcs,
+      totalReservedTb: (totalReservedBytes / (1024 ** 4)).toFixed(1),
+      orphanedCount,
+      orphanedTb: (orphanedBytes / (1024 ** 4)).toFixed(2),
+      pvcCount: pvcs.length,
     })
-  } catch (error) {
-    console.error('[Rancher] API Error:', error)
-    return NextResponse.json(getDummyData())
+
+  } catch (error: any) {
+    console.error('[K8s Storage API] Error:', error.message || error)
+    
+    // UI 응답 안정성을 위해 에러 시에도 기본 구조 반환
+    return NextResponse.json({
+      pvcs: [],
+      totalReservedTb: '0.0',
+      orphanedCount: 0,
+      orphanedTb: '0.00',
+      pvcCount: 0,
+      error: error.message || 'Internal Server Error',
+    })
   }
 }
 
-function getDummyData() {
-  return {
-    nodes: [
-      { node: 'gpu-node-01', used: 85, free: 15, type: 'Worker', isGpu: true },
-      { node: 'cpu-node-01', used: 40, free: 60, type: 'Worker', isGpu: false },
-    ],
-    namespaces: [
-      { ns: 'mlops', running: 10, pending: 1, failed: 0, crash: 0, labels: ['train'] },
-      { ns: 'serving', running: 5, pending: 0, failed: 0, crash: 0, labels: ['api'] },
-    ],
-    isvcs: [
-      {
-        name: 'bert-base-korean-v1',
-        namespace: 'embedding',
-        status: 'Ready',
-        node: 'gpu-node-01',
-        createdAt: new Date(Date.now() - 86400000).toISOString(),
-      },
-      {
-        name: 'roberta-small-en',
-        namespace: 'embedding',
-        status: 'NotReady',
-        node: 'Pending',
-        createdAt: new Date(Date.now() - 3600000).toISOString(),
-      }
-    ],
-    totalPods: 15,
-    unhealthyPods: 0,
+function parseStorageToBytes(storage: string): number {
+  if (!storage || storage === '0') return 0
+  const units: Record<string, number> = {
+    'Ki': 1024, 'Mi': 1024 ** 2, 'Gi': 1024 ** 3, 'Ti': 1024 ** 4, 'Pi': 1024 ** 5,
+    'K': 1000, 'M': 1000 ** 2, 'G': 1000 ** 3, 'T': 1000 ** 4,
   }
+  const match = storage.match(/^(\d+)([a-zA-Z]*)$/)
+  if (!match) return 0
+  const value = parseInt(match[1])
+  const unit = match[2]
+  return value * (units[unit] || 1)
 }

@@ -1,10 +1,10 @@
 'use client'
 
 // Infrastructure 페이지 - K8s 인프라 전체 현황 대시보드
-// Pod / Node / GPU / Storage / Queue 상태를 탭별로 표시
+// Pod / Node / GPU 상태를 탭별로 표시
 
 import dynamic from 'next/dynamic'
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 
 // react-syntax-highlighter: Turbopack SSR 청크 오류 우회를 위해 next/dynamic으로 클라이언트 전용 로드
 const SyntaxHighlighter = dynamic(
@@ -24,18 +24,30 @@ import {
   Server,
   Box,
   Cpu,
-  HardDrive,
   CheckCircle,
   XCircle,
-  AlertTriangle,
   Activity,
   Layers,
-  Users,
   Zap,
+  AlertTriangle,
+  Search,
+  ArrowUpDown,
+  ChevronDown,
+  Filter,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Card,
   CardContent,
@@ -59,25 +71,23 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { Skeleton } from '@/components/ui/skeleton'
 
 // ─────────────────────────────────────────────
 // 타입 정의
 // ─────────────────────────────────────────────
 
-type PodStatus = 'Running' | 'Pending' | 'Failed' | 'CrashLoopBackOff'
+type PodStatus = 'Running' | 'Pending' | 'Failed' | 'Succeeded' | 'CrashLoopBackOff' | 'Terminating' | 'Unknown'
 type NodeStatus = 'Ready' | 'NotReady'
 type NodeRole = 'control-plane' | 'worker' | 'gpu-worker'
 type GpuDeviceStatus = 'Available' | 'Occupied' | 'Error'
-type WorkerStatus = 'Active' | 'Idle' | 'Failed'
 
 interface PodRow {
   namespace: string
   name: string
-  status: PodStatus
+  status: string
   restarts: number
   node: string
-  cpu: string
-  memory: string
   hasGpu: boolean
   age: string
   yaml: string
@@ -111,484 +121,33 @@ interface GpuNode {
   devices: GpuDevice[]
 }
 
-interface PvcRow {
-  name: string
-  namespace: string
-  capacity: string
-  usagePercent: number
-  status: string
-  yaml: string
-}
-
-interface WorkerRow {
-  workerId: string
-  status: WorkerStatus
-  currentJob: string
-  throughput: string
-  lastActive: string
-}
-
 // ─────────────────────────────────────────────
-// 더미 데이터
+// 풍성한 더미 데이터 (Mock)
 // ─────────────────────────────────────────────
 
-// TODO: K8s API - GET /api/v1/pods?fieldSelector=...
-const podData: PodRow[] = [
-  {
-    namespace: 'mlops',
-    name: 'train-job-gpt2-7f8b9',
-    status: 'Running',
-    restarts: 0,
-    node: 'gpu-node-01',
-    cpu: '2.4',
-    memory: '12Gi',
-    hasGpu: true,
-    age: '2h',
-    yaml: `apiVersion: v1
-kind: Pod
-metadata:
-  name: train-job-gpt2-7f8b9
-  namespace: mlops
-  labels:
-    app: train-job
-    model: gpt2
-spec:
-  containers:
-  - name: trainer
-    image: registry.mlops.io/trainer:v1.2.0
-    resources:
-      requests:
-        cpu: "2"
-        memory: "12Gi"
-        nvidia.com/gpu: "1"
-      limits:
-        cpu: "4"
-        memory: "16Gi"
-        nvidia.com/gpu: "1"
-    env:
-    - name: MODEL_NAME
-      value: gpt2
-    - name: EPOCHS
-      value: "10"
-  nodeSelector:
-    accelerator: nvidia-a100
-  restartPolicy: Never`,
-  },
-  {
-    namespace: 'mlops',
-    name: 'train-job-bert-3c2d1',
-    status: 'Running',
-    restarts: 1,
-    node: 'gpu-node-02',
-    cpu: '1.8',
-    memory: '8Gi',
-    hasGpu: true,
-    age: '45m',
-    yaml: `apiVersion: v1
-kind: Pod
-metadata:
-  name: train-job-bert-3c2d1
-  namespace: mlops
-spec:
-  containers:
-  - name: trainer
-    image: registry.mlops.io/trainer:v1.2.0
-    resources:
-      requests:
-        nvidia.com/gpu: "1"`,
-  },
-  {
-    namespace: 'serving',
-    name: 'llm-api-deployment-84fd6',
-    status: 'Running',
-    restarts: 0,
-    node: 'gpu-node-03',
-    cpu: '3.1',
-    memory: '20Gi',
-    hasGpu: true,
-    age: '3d',
-    yaml: `apiVersion: v1
-kind: Pod
-metadata:
-  name: llm-api-deployment-84fd6
-  namespace: serving
-  labels:
-    app: llm-api
-spec:
-  containers:
-  - name: llm-server
-    image: registry.mlops.io/llm-server:v2.0.1
-    ports:
-    - containerPort: 8080`,
-  },
-  {
-    namespace: 'serving',
-    name: 'embedding-api-6b9c4',
-    status: 'Running',
-    restarts: 0,
-    node: 'gpu-node-01',
-    cpu: '0.8',
-    memory: '4Gi',
-    hasGpu: true,
-    age: '5d',
-    yaml: `apiVersion: v1
-kind: Pod
-metadata:
-  name: embedding-api-6b9c4
-  namespace: serving`,
-  },
-  {
-    namespace: 'mlops',
-    name: 'data-preprocess-5a1f2',
-    status: 'Pending',
-    restarts: 0,
-    node: '-',
-    cpu: '0',
-    memory: '0',
-    hasGpu: false,
-    age: '5m',
-    yaml: `apiVersion: v1
-kind: Pod
-metadata:
-  name: data-preprocess-5a1f2
-  namespace: mlops
-status:
-  phase: Pending
-  conditions:
-  - type: PodScheduled
-    status: "False"
-    reason: Unschedulable`,
-  },
-  {
-    namespace: 'mlops',
-    name: 'eval-run-qwen-9d3e7',
-    status: 'Failed',
-    restarts: 3,
-    node: 'gpu-node-04',
-    cpu: '0',
-    memory: '0',
-    hasGpu: false,
-    age: '1h',
-    yaml: `apiVersion: v1
-kind: Pod
-metadata:
-  name: eval-run-qwen-9d3e7
-  namespace: mlops
-status:
-  phase: Failed
-  containerStatuses:
-  - name: evaluator
-    ready: false
-    restartCount: 3
-    state:
-      terminated:
-        exitCode: 1
-        reason: Error`,
-  },
-  {
-    namespace: 'monitoring',
-    name: 'prometheus-0',
-    status: 'Running',
-    restarts: 0,
-    node: 'cpu-node-01',
-    cpu: '0.4',
-    memory: '2Gi',
-    hasGpu: false,
-    age: '7d',
-    yaml: `apiVersion: v1
-kind: Pod
-metadata:
-  name: prometheus-0
-  namespace: monitoring
-  labels:
-    app: prometheus`,
-  },
-  {
-    namespace: 'monitoring',
-    name: 'grafana-7d4bc9-xkq2p',
-    status: 'Running',
-    restarts: 0,
-    node: 'cpu-node-01',
-    cpu: '0.2',
-    memory: '512Mi',
-    hasGpu: false,
-    age: '7d',
-    yaml: `apiVersion: v1
-kind: Pod
-metadata:
-  name: grafana-7d4bc9-xkq2p
-  namespace: monitoring`,
-  },
-  {
-    namespace: 'kube-system',
-    name: 'coredns-5d78c9-m7j9p',
-    status: 'Running',
-    restarts: 0,
-    node: 'cpu-node-02',
-    cpu: '0.05',
-    memory: '64Mi',
-    hasGpu: false,
-    age: '14d',
-    yaml: `apiVersion: v1
-kind: Pod
-metadata:
-  name: coredns-5d78c9-m7j9p
-  namespace: kube-system`,
-  },
-  {
-    namespace: 'mlops',
-    name: 'feature-store-crash-2b8f1',
-    status: 'CrashLoopBackOff',
-    restarts: 12,
-    node: 'cpu-node-02',
-    cpu: '0.1',
-    memory: '256Mi',
-    hasGpu: false,
-    age: '30m',
-    yaml: `apiVersion: v1
-kind: Pod
-metadata:
-  name: feature-store-crash-2b8f1
-  namespace: mlops
-status:
-  phase: Running
-  containerStatuses:
-  - name: feature-store
-    ready: false
-    restartCount: 12
-    state:
-      waiting:
-        reason: CrashLoopBackOff`,
-  },
-  {
-    namespace: 'serving',
-    name: 'rag-pipeline-9e5c3',
-    status: 'Running',
-    restarts: 0,
-    node: 'cpu-node-01',
-    cpu: '1.2',
-    memory: '3Gi',
-    hasGpu: false,
-    age: '2d',
-    yaml: `apiVersion: v1
-kind: Pod
-metadata:
-  name: rag-pipeline-9e5c3
-  namespace: serving`,
-  },
-]
-
-// TODO: K8s API - GET /api/v1/nodes
 const nodeData: NodeRow[] = [
-  {
-    name: 'gpu-node-01',
-    status: 'Ready',
-    role: 'gpu-worker',
-    cpuUsage: 72,
-    memoryUsage: 81,
-    gpuUsage: 88,
-    diskPressure: false,
-    memoryPressure: false,
-    podCount: 14,
-    yaml: `apiVersion: v1
-kind: Node
-metadata:
-  name: gpu-node-01
-  labels:
-    kubernetes.io/role: gpu-worker
-    accelerator: nvidia-a100
-spec:
-  taints:
-  - key: nvidia.com/gpu
-    value: "true"
-    effect: NoSchedule
-status:
-  capacity:
-    cpu: "96"
-    memory: 768Gi
-    nvidia.com/gpu: "8"
-  conditions:
-  - type: Ready
-    status: "True"`,
-  },
-  {
-    name: 'gpu-node-02',
-    status: 'Ready',
-    role: 'gpu-worker',
-    cpuUsage: 58,
-    memoryUsage: 63,
-    gpuUsage: 75,
-    diskPressure: false,
-    memoryPressure: false,
-    podCount: 11,
-    yaml: `apiVersion: v1
-kind: Node
-metadata:
-  name: gpu-node-02
-  labels:
-    kubernetes.io/role: gpu-worker
-    accelerator: nvidia-a100
-status:
-  capacity:
-    nvidia.com/gpu: "8"
-  conditions:
-  - type: Ready
-    status: "True"`,
-  },
-  {
-    name: 'gpu-node-03',
-    status: 'Ready',
-    role: 'gpu-worker',
-    cpuUsage: 45,
-    memoryUsage: 55,
-    gpuUsage: 60,
-    diskPressure: false,
-    memoryPressure: false,
-    podCount: 9,
-    yaml: `apiVersion: v1
-kind: Node
-metadata:
-  name: gpu-node-03
-  labels:
-    accelerator: nvidia-v100
-status:
-  conditions:
-  - type: Ready
-    status: "True"`,
-  },
-  {
-    name: 'gpu-node-04',
-    status: 'NotReady',
-    role: 'gpu-worker',
-    cpuUsage: 12,
-    memoryUsage: 18,
-    gpuUsage: 0,
-    diskPressure: true,
-    memoryPressure: false,
-    podCount: 2,
-    yaml: `apiVersion: v1
-kind: Node
-metadata:
-  name: gpu-node-04
-status:
-  conditions:
-  - type: Ready
-    status: "False"
-    reason: KubeletNotReady
-  - type: DiskPressure
-    status: "True"`,
-  },
-  {
-    name: 'cpu-node-01',
-    status: 'Ready',
-    role: 'worker',
-    cpuUsage: 38,
-    memoryUsage: 44,
-    diskPressure: false,
-    memoryPressure: false,
-    podCount: 22,
-    yaml: `apiVersion: v1
-kind: Node
-metadata:
-  name: cpu-node-01
-  labels:
-    kubernetes.io/role: worker
-status:
-  capacity:
-    cpu: "32"
-    memory: 128Gi
-  conditions:
-  - type: Ready
-    status: "True"`,
-  },
-  {
-    name: 'cpu-node-02',
-    status: 'Ready',
-    role: 'control-plane',
-    cpuUsage: 21,
-    memoryUsage: 33,
-    diskPressure: false,
-    memoryPressure: false,
-    podCount: 18,
-    yaml: `apiVersion: v1
-kind: Node
-metadata:
-  name: cpu-node-02
-  labels:
-    kubernetes.io/role: control-plane
-status:
-  capacity:
-    cpu: "16"
-    memory: 64Gi
-  conditions:
-  - type: Ready
-    status: "True"`,
-  },
+  { name: 'gpu-node-01', status: 'Ready', role: 'gpu-worker', cpuUsage: 72, memoryUsage: 81, gpuUsage: 88, diskPressure: false, memoryPressure: false, podCount: 14, yaml: '...' },
+  { name: 'gpu-node-02', status: 'Ready', role: 'gpu-worker', cpuUsage: 58, memoryUsage: 63, gpuUsage: 75, diskPressure: false, memoryPressure: false, podCount: 11, yaml: '...' },
+  { name: 'gpu-node-03', status: 'Ready', role: 'gpu-worker', cpuUsage: 45, memoryUsage: 55, gpuUsage: 60, diskPressure: false, memoryPressure: false, podCount: 9, yaml: '...' },
+  { name: 'gpu-node-04', status: 'NotReady', role: 'gpu-worker', cpuUsage: 12, memoryUsage: 18, gpuUsage: 0, diskPressure: true, memoryPressure: false, podCount: 2, yaml: '...' },
+  { name: 'cpu-node-01', status: 'Ready', role: 'worker', cpuUsage: 38, memoryUsage: 44, diskPressure: false, memoryPressure: false, podCount: 22, yaml: '...' },
+  { name: 'cpu-node-02', status: 'Ready', role: 'control-plane', cpuUsage: 21, memoryUsage: 33, diskPressure: false, memoryPressure: false, podCount: 18, yaml: '...' },
 ]
 
-// TODO: Prometheus - DCGM_FI_DEV_GPU_UTIL, DCGM_FI_DEV_GPU_TEMP
 const gpuData: GpuNode[] = [
   {
     nodeName: 'gpu-node-01',
     gpuModel: 'NVIDIA A100 80GB',
     gpuCount: 8,
     devices: [
-      {
-        index: 0,
-        utilization: 95,
-        temperature: 78,
-        power: 380,
-        status: 'Occupied',
-      },
-      {
-        index: 1,
-        utilization: 88,
-        temperature: 75,
-        power: 362,
-        status: 'Occupied',
-      },
-      {
-        index: 2,
-        utilization: 72,
-        temperature: 71,
-        power: 310,
-        status: 'Occupied',
-      },
-      {
-        index: 3,
-        utilization: 0,
-        temperature: 38,
-        power: 45,
-        status: 'Available',
-      },
-      {
-        index: 4,
-        utilization: 91,
-        temperature: 80,
-        power: 388,
-        status: 'Occupied',
-      },
-      {
-        index: 5,
-        utilization: 87,
-        temperature: 76,
-        power: 358,
-        status: 'Occupied',
-      },
-      {
-        index: 6,
-        utilization: 0,
-        temperature: 36,
-        power: 42,
-        status: 'Available',
-      },
-      {
-        index: 7,
-        utilization: 99,
-        temperature: 83,
-        power: 400,
-        status: 'Occupied',
-      },
+      { index: 0, utilization: 95, temperature: 78, power: 380, status: 'Occupied' },
+      { index: 1, utilization: 88, temperature: 75, power: 362, status: 'Occupied' },
+      { index: 2, utilization: 72, temperature: 71, power: 310, status: 'Occupied' },
+      { index: 3, utilization: 0, temperature: 38, power: 45, status: 'Available' },
+      { index: 4, utilization: 91, temperature: 80, power: 388, status: 'Occupied' },
+      { index: 5, utilization: 87, temperature: 76, power: 358, status: 'Occupied' },
+      { index: 6, utilization: 0, temperature: 36, power: 42, status: 'Available' },
+      { index: 7, utilization: 99, temperature: 83, power: 400, status: 'Occupied' },
     ],
   },
   {
@@ -596,62 +155,14 @@ const gpuData: GpuNode[] = [
     gpuModel: 'NVIDIA A100 80GB',
     gpuCount: 8,
     devices: [
-      {
-        index: 0,
-        utilization: 80,
-        temperature: 72,
-        power: 340,
-        status: 'Occupied',
-      },
-      {
-        index: 1,
-        utilization: 0,
-        temperature: 37,
-        power: 43,
-        status: 'Available',
-      },
-      {
-        index: 2,
-        utilization: 76,
-        temperature: 70,
-        power: 325,
-        status: 'Occupied',
-      },
-      {
-        index: 3,
-        utilization: 82,
-        temperature: 73,
-        power: 345,
-        status: 'Occupied',
-      },
-      {
-        index: 4,
-        utilization: 0,
-        temperature: 35,
-        power: 40,
-        status: 'Available',
-      },
-      {
-        index: 5,
-        utilization: 68,
-        temperature: 68,
-        power: 295,
-        status: 'Occupied',
-      },
-      {
-        index: 6,
-        utilization: 77,
-        temperature: 71,
-        power: 330,
-        status: 'Occupied',
-      },
-      {
-        index: 7,
-        utilization: 0,
-        temperature: 36,
-        power: 41,
-        status: 'Available',
-      },
+      { index: 0, utilization: 80, temperature: 72, power: 340, status: 'Occupied' },
+      { index: 1, utilization: 0, temperature: 37, power: 43, status: 'Available' },
+      { index: 2, utilization: 76, temperature: 70, power: 325, status: 'Occupied' },
+      { index: 3, utilization: 82, temperature: 73, power: 345, status: 'Occupied' },
+      { index: 4, utilization: 0, temperature: 35, power: 40, status: 'Available' },
+      { index: 5, utilization: 68, temperature: 68, power: 295, status: 'Occupied' },
+      { index: 6, utilization: 77, temperature: 71, power: 330, status: 'Occupied' },
+      { index: 7, utilization: 0, temperature: 36, power: 41, status: 'Available' },
     ],
   },
   {
@@ -659,227 +170,11 @@ const gpuData: GpuNode[] = [
     gpuModel: 'NVIDIA V100 32GB',
     gpuCount: 4,
     devices: [
-      {
-        index: 0,
-        utilization: 65,
-        temperature: 68,
-        power: 220,
-        status: 'Occupied',
-      },
-      {
-        index: 1,
-        utilization: 58,
-        temperature: 65,
-        power: 205,
-        status: 'Occupied',
-      },
-      {
-        index: 2,
-        utilization: 0,
-        temperature: 34,
-        power: 35,
-        status: 'Available',
-      },
-      {
-        index: 3,
-        utilization: 0,
-        temperature: 33,
-        power: 34,
-        status: 'Available',
-      },
+      { index: 0, utilization: 65, temperature: 68, power: 220, status: 'Occupied' },
+      { index: 1, utilization: 58, temperature: 65, power: 205, status: 'Occupied' },
+      { index: 2, utilization: 0, temperature: 34, power: 35, status: 'Available' },
+      { index: 3, utilization: 0, temperature: 33, power: 34, status: 'Available' },
     ],
-  },
-  {
-    nodeName: 'gpu-node-04',
-    gpuModel: 'NVIDIA V100 32GB',
-    gpuCount: 4,
-    devices: [
-      { index: 0, utilization: 0, status: 'Error' },
-      { index: 1, utilization: 0, status: 'Error' },
-      { index: 2, utilization: 0, status: 'Error' },
-      { index: 3, utilization: 0, status: 'Error' },
-    ],
-  },
-]
-
-// 스토리지 도넛 차트용 더미 데이터
-const storageBreakdown = [
-  { label: 'Dataset', used: 18.4, color: 'bg-blue-500' },
-  { label: 'Model', used: 12.7, color: 'bg-violet-500' },
-  { label: 'Artifacts', used: 6.2, color: 'bg-amber-500' },
-  { label: 'Logs', used: 3.1, color: 'bg-emerald-500' },
-]
-
-const pvcData: PvcRow[] = [
-  {
-    name: 'dataset-store-pvc',
-    namespace: 'mlops',
-    capacity: '50Ti',
-    usagePercent: 77,
-    status: 'Bound',
-    yaml: `apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: dataset-store-pvc
-  namespace: mlops
-spec:
-  accessModes:
-  - ReadWriteMany
-  resources:
-    requests:
-      storage: 50Ti
-  storageClassName: ceph-rbd
-status:
-  phase: Bound
-  capacity:
-    storage: 50Ti`,
-  },
-  {
-    name: 'model-registry-pvc',
-    namespace: 'mlops',
-    capacity: '20Ti',
-    usagePercent: 63,
-    status: 'Bound',
-    yaml: `apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: model-registry-pvc
-  namespace: mlops
-spec:
-  accessModes:
-  - ReadWriteMany
-  resources:
-    requests:
-      storage: 20Ti
-  storageClassName: ceph-rbd
-status:
-  phase: Bound`,
-  },
-  {
-    name: 'artifact-store-pvc',
-    namespace: 'mlops',
-    capacity: '10Ti',
-    usagePercent: 62,
-    status: 'Bound',
-    yaml: `apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: artifact-store-pvc
-  namespace: mlops
-spec:
-  accessModes:
-  - ReadWriteOnce
-  resources:
-    requests:
-      storage: 10Ti
-status:
-  phase: Bound`,
-  },
-  {
-    name: 'log-archive-pvc',
-    namespace: 'monitoring',
-    capacity: '5Ti',
-    usagePercent: 62,
-    status: 'Bound',
-    yaml: `apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: log-archive-pvc
-  namespace: monitoring
-spec:
-  accessModes:
-  - ReadWriteOnce
-  resources:
-    requests:
-      storage: 5Ti
-status:
-  phase: Bound`,
-  },
-  {
-    name: 'prometheus-data-pvc',
-    namespace: 'monitoring',
-    capacity: '500Gi',
-    usagePercent: 41,
-    status: 'Bound',
-    yaml: `apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: prometheus-data-pvc
-  namespace: monitoring
-spec:
-  accessModes:
-  - ReadWriteOnce
-  resources:
-    requests:
-      storage: 500Gi
-status:
-  phase: Bound`,
-  },
-  {
-    name: 'pending-nfs-pvc',
-    namespace: 'serving',
-    capacity: '2Ti',
-    usagePercent: 0,
-    status: 'Pending',
-    yaml: `apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: pending-nfs-pvc
-  namespace: serving
-spec:
-  accessModes:
-  - ReadWriteMany
-  resources:
-    requests:
-      storage: 2Ti
-  storageClassName: nfs-client
-status:
-  phase: Pending`,
-  },
-]
-
-const workerData: WorkerRow[] = [
-  {
-    workerId: 'worker-a1b2c3',
-    status: 'Active',
-    currentJob: 'train-gpt2-epoch-7',
-    throughput: '124 steps/min',
-    lastActive: '방금 전',
-  },
-  {
-    workerId: 'worker-d4e5f6',
-    status: 'Active',
-    currentJob: 'eval-bert-v2',
-    throughput: '89 steps/min',
-    lastActive: '12초 전',
-  },
-  {
-    workerId: 'worker-g7h8i9',
-    status: 'Idle',
-    currentJob: '-',
-    throughput: '-',
-    lastActive: '3분 전',
-  },
-  {
-    workerId: 'worker-j1k2l3',
-    status: 'Active',
-    currentJob: 'preprocess-wiki-v3',
-    throughput: '1,240 samples/s',
-    lastActive: '방금 전',
-  },
-  {
-    workerId: 'worker-m4n5o6',
-    status: 'Failed',
-    currentJob: 'train-llama-oom',
-    throughput: '-',
-    lastActive: '47분 전',
-  },
-  {
-    workerId: 'worker-p7q8r9',
-    status: 'Idle',
-    currentJob: '-',
-    throughput: '-',
-    lastActive: '8분 전',
   },
 ]
 
@@ -887,144 +182,56 @@ const workerData: WorkerRow[] = [
 // 헬퍼 함수
 // ─────────────────────────────────────────────
 
-// Pod 상태에 따른 배지 스타일 반환
-function getPodStatusBadge(status: PodStatus) {
+function getPodStatusBadge(status: string) {
   switch (status) {
-    case 'Running':
-      return (
-        <Badge className="border-emerald-500/30 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-          {status}
-        </Badge>
-      )
-    case 'Pending':
-      return (
-        <Badge className="border-amber-500/30 bg-amber-500/15 text-amber-600 dark:text-amber-400">
-          {status}
-        </Badge>
-      )
-    case 'Failed':
-      return (
-        <Badge className="border-red-500/30 bg-red-500/15 text-red-600 dark:text-red-400">
-          {status}
-        </Badge>
-      )
-    case 'CrashLoopBackOff':
-      return (
-        <Badge className="border-purple-500/30 bg-purple-500/15 text-purple-600 dark:text-purple-400">
-          {status}
-        </Badge>
-      )
+    case 'Running': return <Badge className="border-emerald-500/30 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold tracking-tight">{status}</Badge>
+    case 'Pending': return <Badge className="border-amber-500/30 bg-amber-500/15 text-amber-600 dark:text-amber-400 font-bold tracking-tight">{status}</Badge>
+    case 'Failed': return <Badge className="border-red-500/30 bg-red-500/15 text-red-600 dark:text-red-400 font-bold tracking-tight">{status}</Badge>
+    case 'Succeeded': return <Badge className="border-blue-500/30 bg-blue-500/15 text-blue-600 dark:text-blue-400 font-bold tracking-tight">Completed</Badge>
+    case 'CrashLoopBackOff': return <Badge className="border-purple-500/30 bg-purple-500/15 text-purple-600 dark:text-purple-400 font-bold tracking-tight">{status}</Badge>
+    case 'Terminating': return <Badge className="border-slate-500/30 bg-slate-500/15 text-slate-600 dark:text-slate-400 font-bold tracking-tight">{status}</Badge>
+    default: return <Badge className="border-muted/30 bg-muted/15 text-muted-foreground font-bold tracking-tight">{status}</Badge>
   }
 }
 
-// Node 상태 배지 반환
 function getNodeStatusBadge(status: NodeStatus) {
-  return status === 'Ready' ? (
-    <Badge className="border-emerald-500/30 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-      Ready
-    </Badge>
-  ) : (
-    <Badge className="border-red-500/30 bg-red-500/15 text-red-600 dark:text-red-400">
-      NotReady
-    </Badge>
-  )
+  return status === 'Ready' 
+    ? <Badge className="border-emerald-500/30 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold tracking-tight uppercase">Ready</Badge>
+    : <Badge className="border-red-500/30 bg-red-500/15 text-red-600 dark:text-red-400 font-bold tracking-tight uppercase">NotReady</Badge>
 }
 
-// Node Role 배지 반환
 function getNodeRoleBadge(role: NodeRole) {
-  switch (role) {
-    case 'control-plane':
-      return (
-        <Badge variant="outline" className="font-mono text-xs">
-          control-plane
-        </Badge>
-      )
-    case 'gpu-worker':
-      return (
-        <Badge variant="secondary" className="font-mono text-xs">
-          gpu-worker
-        </Badge>
-      )
-    case 'worker':
-      return (
-        <Badge variant="outline" className="font-mono text-xs">
-          worker
-        </Badge>
-      )
-  }
+  return <Badge variant="outline" className="font-bold text-[9px] uppercase tracking-tighter border-muted-foreground/30">{role}</Badge>
 }
 
-// GPU 디바이스 상태 배지 반환
 function getGpuStatusBadge(status: GpuDeviceStatus) {
   switch (status) {
-    case 'Available':
-      return (
-        <Badge className="border-emerald-500/30 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-          Available
-        </Badge>
-      )
-    case 'Occupied':
-      return (
-        <Badge className="border-blue-500/30 bg-blue-500/15 text-blue-600 dark:text-blue-400">
-          Occupied
-        </Badge>
-      )
-    case 'Error':
-      return (
-        <Badge className="border-red-500/30 bg-red-500/15 text-red-600 dark:text-red-400">
-          Error
-        </Badge>
-      )
+    case 'Available': return <Badge className="border-emerald-500/30 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold text-[9px] tracking-widest px-1.5 h-4">AVAIL</Badge>
+    case 'Occupied': return <Badge className="border-blue-500/30 bg-blue-500/15 text-blue-600 dark:text-blue-400 font-bold text-[9px] tracking-widest px-1.5 h-4">BUSY</Badge>
+    case 'Error': return <Badge className="border-red-500/30 bg-red-500/15 text-red-600 dark:text-red-400 font-bold text-[9px] tracking-widest px-1.5 h-4">ERR</Badge>
   }
 }
 
-// Worker 상태 배지 반환
-function getWorkerStatusBadge(status: WorkerStatus) {
-  switch (status) {
-    case 'Active':
-      return (
-        <Badge className="border-emerald-500/30 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-          Active
-        </Badge>
-      )
-    case 'Idle':
-      return (
-        <Badge className="border-slate-400/30 bg-slate-400/10 text-slate-500 dark:text-slate-400">
-          Idle
-        </Badge>
-      )
-    case 'Failed':
-      return (
-        <Badge className="border-red-500/30 bg-red-500/15 text-red-600 dark:text-red-400">
-          Failed
-        </Badge>
-      )
-  }
-}
-
-// CPU 사용률에 따른 progress bar 색상
-function getCpuProgressClass(value: number) {
-  if (value >= 80) return '[&>[data-slot=progress-indicator]]:bg-red-500'
-  if (value >= 60) return '[&>[data-slot=progress-indicator]]:bg-amber-500'
+function getCpuProgressClass(v: number) {
+  if (v >= 80) return '[&>[data-slot=progress-indicator]]:bg-red-500'
+  if (v >= 60) return '[&>[data-slot=progress-indicator]]:bg-amber-500'
   return '[&>[data-slot=progress-indicator]]:bg-emerald-500'
 }
 
-// 메모리 사용률에 따른 progress bar 색상
-function getMemProgressClass(value: number) {
-  if (value >= 85) return '[&>[data-slot=progress-indicator]]:bg-red-500'
-  if (value >= 65) return '[&>[data-slot=progress-indicator]]:bg-amber-500'
+function getMemProgressClass(v: number) {
+  if (v >= 85) return '[&>[data-slot=progress-indicator]]:bg-red-500'
+  if (v >= 65) return '[&>[data-slot=progress-indicator]]:bg-amber-500'
   return '[&>[data-slot=progress-indicator]]:bg-blue-500'
 }
 
-// GPU 사용률에 따른 progress bar 색상
-function getGpuProgressClass(value: number) {
-  if (value >= 90) return '[&>[data-slot=progress-indicator]]:bg-violet-500'
-  if (value >= 60) return '[&>[data-slot=progress-indicator]]:bg-blue-500'
+function getGpuProgressClass(v: number) {
+  if (v >= 90) return '[&>[data-slot=progress-indicator]]:bg-violet-500'
+  if (v >= 60) return '[&>[data-slot=progress-indicator]]:bg-blue-500'
   return '[&>[data-slot=progress-indicator]]:bg-slate-400'
 }
 
 // ─────────────────────────────────────────────
-// YAML 뷰어 모달 컴포넌트
+// YAML 뷰어 모달
 // ─────────────────────────────────────────────
 
 interface YamlViewerModalProps {
@@ -1035,85 +242,36 @@ interface YamlViewerModalProps {
 }
 
 function YamlViewerModal({ open, onClose, title, yaml }: YamlViewerModalProps) {
-  // TODO: 클립보드 복사 기능 구현 필요
-  const handleCopy = () => {}
-
-  // TODO: 파일 다운로드 기능 구현 필요
-  const handleDownload = () => {}
-
-  // vscDarkPlus 스타일 상태 관리 (동적 로드)
-  const [style, setStyle] = useState<Record<
-    string,
-    React.CSSProperties
-  > | null>(null)
-
-  // 모달이 열릴 때 스타일 로드
-  React.useEffect(() => {
+  const [style, setStyle] = useState<Record<string, React.CSSProperties> | null>(null)
+  useEffect(() => {
     if (open && !style) {
-      if (cachedVscDarkPlus) {
-        setStyle(cachedVscDarkPlus)
-      } else {
-        import('react-syntax-highlighter/dist/cjs/styles/prism').then(m => {
-          cachedVscDarkPlus = m.vscDarkPlus
-          setStyle(m.vscDarkPlus)
-        })
-      }
+      if (cachedVscDarkPlus) setStyle(cachedVscDarkPlus)
+      else import('react-syntax-highlighter/dist/cjs/styles/prism').then(m => {
+        cachedVscDarkPlus = m.vscDarkPlus
+        setStyle(m.vscDarkPlus)
+      })
     }
   }, [open, style])
 
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-h-[80vh] max-w-3xl overflow-hidden p-0">
-        <DialogHeader className="border-b px-6 py-4">
-          <DialogTitle className="font-mono text-sm">{title}</DialogTitle>
+      <DialogContent className="max-h-[80vh] max-w-3xl overflow-hidden p-0 border-none ring-1 ring-border shadow-2xl">
+        <DialogHeader className="border-b px-6 py-4 bg-muted/20">
+          <DialogTitle className="font-mono text-sm flex items-center gap-2 font-bold uppercase">
+             <Layers className="size-4 text-primary" />
+             {title}
+          </DialogTitle>
         </DialogHeader>
-
-        {/* YAML 코드 영역 */}
         <div className="max-h-[calc(80vh-120px)] overflow-y-auto bg-[#0f172a]">
           {SyntaxHighlighter && style ? (
-            <SyntaxHighlighter
-              language="yaml"
-              style={style}
-              customStyle={{
-                margin: 0,
-                borderRadius: 0,
-                fontSize: '0.8rem',
-                background: '#0f172a',
-              }}
-              showLineNumbers
-            >
+            <SyntaxHighlighter language="yaml" style={style} customStyle={{ margin: 0, borderRadius: 0, fontSize: '0.75rem', background: '#0f172a', padding: '1.5rem' }} showLineNumbers>
               {yaml}
             </SyntaxHighlighter>
-          ) : (
-            // 로딩 중 fallback - 코드를 plain text로 표시
-            <pre className="p-4 font-mono text-xs leading-relaxed text-slate-300">
-              {yaml}
-            </pre>
-          )}
+          ) : <pre className="p-6 font-mono text-xs leading-relaxed text-slate-300">{yaml}</pre>}
         </div>
-
-        {/* 액션 버튼 영역 */}
-        <div className="flex items-center justify-end gap-2 border-t px-6 py-3">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleCopy}
-            className="gap-1.5"
-          >
-            <Copy className="size-3.5" />
-            {/* TODO: 복사 완료 피드백 */}
-            복사
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleDownload}
-            className="gap-1.5"
-          >
-            <Download className="size-3.5" />
-            {/* TODO: 다운로드 파일명 설정 */}
-            다운로드
-          </Button>
+        <div className="flex items-center justify-end gap-2 border-t px-6 py-3 bg-muted/10">
+          <Button variant="outline" size="sm" onClick={() => {}} className="gap-1.5 h-8 text-[10px] font-bold uppercase tracking-widest"><Copy className="size-3" />COPY</Button>
+          <Button variant="outline" size="sm" onClick={() => {}} className="gap-1.5 h-8 text-[10px] font-bold uppercase tracking-widest"><Download className="size-3" />DOWNLOAD</Button>
         </div>
       </DialogContent>
     </Dialog>
@@ -1121,901 +279,496 @@ function YamlViewerModal({ open, onClose, title, yaml }: YamlViewerModalProps) {
 }
 
 // ─────────────────────────────────────────────
-// 상단 요약 카드
-// ─────────────────────────────────────────────
-
-function SummaryCards() {
-  const totalNodes = nodeData.length
-  const readyNodes = nodeData.filter(n => n.status === 'Ready').length
-  const notReadyNodes = totalNodes - readyNodes
-
-  const totalPods = podData.length
-  const runningPods = podData.filter(p => p.status === 'Running').length
-  const failedPods = podData.filter(
-    p => p.status === 'Failed' || p.status === 'CrashLoopBackOff'
-  ).length
-
-  const gpuNodes = nodeData.filter(n => n.gpuUsage !== undefined).length
-  const activeGpuNodes = nodeData.filter(
-    n => n.gpuUsage !== undefined && n.gpuUsage > 0
-  ).length
-
-  // 스토리지 총 사용량
-  const totalUsedTb = storageBreakdown.reduce((sum, s) => sum + s.used, 0)
-  const totalCapacityTb = 85.5
-  const storagePercent = Math.round((totalUsedTb / totalCapacityTb) * 100)
-
-  return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      {/* 노드 카드 */}
-      <Card className="gap-3 py-4">
-        <CardHeader className="px-5 pb-0">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-muted-foreground text-sm font-medium">
-              전체 노드
-            </CardTitle>
-            <Server className="text-muted-foreground size-4" />
-          </div>
-        </CardHeader>
-        <CardContent className="px-5">
-          <p className="text-3xl font-bold">{totalNodes}</p>
-          <div className="mt-2 flex items-center gap-3 text-xs">
-            <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
-              <CheckCircle className="size-3.5" />
-              Ready {readyNodes}
-            </span>
-            <span className="flex items-center gap-1 text-red-500">
-              <XCircle className="size-3.5" />
-              NotReady {notReadyNodes}
-            </span>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Pod 카드 */}
-      <Card className="gap-3 py-4">
-        <CardHeader className="px-5 pb-0">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-muted-foreground text-sm font-medium">
-              전체 Pod
-            </CardTitle>
-            <Box className="text-muted-foreground size-4" />
-          </div>
-        </CardHeader>
-        <CardContent className="px-5">
-          <p className="text-3xl font-bold">{totalPods}</p>
-          <div className="mt-2 flex items-center gap-3 text-xs">
-            <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
-              <Activity className="size-3.5" />
-              Running {runningPods}
-            </span>
-            <span className="flex items-center gap-1 text-red-500">
-              <XCircle className="size-3.5" />
-              Failed {failedPods}
-            </span>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* GPU 카드 */}
-      <Card className="gap-3 py-4">
-        <CardHeader className="px-5 pb-0">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-muted-foreground text-sm font-medium">
-              GPU 노드
-            </CardTitle>
-            <Cpu className="text-muted-foreground size-4" />
-          </div>
-        </CardHeader>
-        <CardContent className="px-5">
-          <p className="text-3xl font-bold">{gpuNodes}</p>
-          <div className="mt-2 flex items-center gap-3 text-xs">
-            <span className="flex items-center gap-1 text-blue-600 dark:text-blue-400">
-              <Zap className="size-3.5" />
-              사용 중 {activeGpuNodes}
-            </span>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* 스토리지 카드 */}
-      <Card className="gap-3 py-4">
-        <CardHeader className="px-5 pb-0">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-muted-foreground text-sm font-medium">
-              스토리지 사용률
-            </CardTitle>
-            <HardDrive className="text-muted-foreground size-4" />
-          </div>
-        </CardHeader>
-        <CardContent className="px-5">
-          <p className="text-3xl font-bold">{storagePercent}%</p>
-          <div className="mt-2 space-y-1">
-            <Progress
-              value={storagePercent}
-              className={`h-1.5 ${storagePercent >= 80 ? '[&>[data-slot=progress-indicator]]:bg-amber-500' : '[&>[data-slot=progress-indicator]]:bg-blue-500'}`}
-            />
-            <p className="text-muted-foreground text-xs">
-              {totalUsedTb.toFixed(1)} TB / {totalCapacityTb} TB
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────
-// Pod 탭 컨텐츠
-// ─────────────────────────────────────────────
-
-function PodTab() {
-  const [selectedYaml, setSelectedYaml] = useState<{
-    title: string
-    yaml: string
-  } | null>(null)
-
-  return (
-    <>
-      {/* TODO: K8s API - GET /api/v1/pods?fieldSelector=... */}
-      <div className="rounded-lg border">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-muted/40">
-              <TableHead className="font-semibold">Namespace</TableHead>
-              <TableHead className="font-semibold">Pod Name</TableHead>
-              <TableHead className="font-semibold">상태</TableHead>
-              <TableHead className="font-semibold">Restarts</TableHead>
-              <TableHead className="font-semibold">Node</TableHead>
-              <TableHead className="font-semibold">CPU (cores)</TableHead>
-              <TableHead className="font-semibold">Memory</TableHead>
-              <TableHead className="font-semibold">GPU</TableHead>
-              <TableHead className="font-semibold">Age</TableHead>
-              <TableHead className="font-semibold"></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {podData.map(pod => (
-              <TableRow key={pod.name} className="hover:bg-muted/30">
-                {/* 네임스페이스 */}
-                <TableCell className="text-muted-foreground font-mono text-xs">
-                  {pod.namespace}
-                </TableCell>
-
-                {/* Pod 이름 */}
-                <TableCell className="max-w-[180px] truncate font-mono text-xs font-medium">
-                  {pod.name}
-                </TableCell>
-
-                {/* 상태 배지 */}
-                <TableCell>{getPodStatusBadge(pod.status)}</TableCell>
-
-                {/* Restart 수 - 5 이상이면 빨간색 */}
-                <TableCell
-                  className={
-                    pod.restarts >= 5
-                      ? 'font-bold text-red-500'
-                      : 'text-foreground'
-                  }
-                >
-                  {pod.restarts}
-                </TableCell>
-
-                {/* 노드명 */}
-                <TableCell className="font-mono text-xs">{pod.node}</TableCell>
-
-                {/* CPU */}
-                <TableCell className="text-sm">{pod.cpu}</TableCell>
-
-                {/* Memory */}
-                <TableCell className="text-sm">{pod.memory}</TableCell>
-
-                {/* GPU 여부 */}
-                <TableCell>
-                  {pod.hasGpu && (
-                    <Badge className="border-violet-500/30 bg-violet-500/15 text-violet-600 dark:text-violet-400">
-                      GPU
-                    </Badge>
-                  )}
-                </TableCell>
-
-                {/* Age */}
-                <TableCell className="text-muted-foreground text-sm">
-                  {pod.age}
-                </TableCell>
-
-                {/* YAML 버튼 */}
-                <TableCell>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 text-xs"
-                    onClick={() =>
-                      setSelectedYaml({ title: pod.name, yaml: pod.yaml })
-                    }
-                  >
-                    YAML
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-
-      {/* YAML 뷰어 모달 */}
-      {selectedYaml && (
-        <YamlViewerModal
-          open={!!selectedYaml}
-          onClose={() => setSelectedYaml(null)}
-          title={selectedYaml.title}
-          yaml={selectedYaml.yaml}
-        />
-      )}
-    </>
-  )
-}
-
-// ─────────────────────────────────────────────
-// Node 탭 컨텐츠
-// ─────────────────────────────────────────────
-
-function NodeTab() {
-  const [selectedYaml, setSelectedYaml] = useState<{
-    title: string
-    yaml: string
-  } | null>(null)
-
-  return (
-    <>
-      {/* TODO: K8s API - GET /api/v1/nodes */}
-      <div className="rounded-lg border">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-muted/40">
-              <TableHead className="font-semibold">Node Name</TableHead>
-              <TableHead className="font-semibold">상태</TableHead>
-              <TableHead className="font-semibold">Role</TableHead>
-              <TableHead className="w-40 font-semibold">CPU 사용률</TableHead>
-              <TableHead className="w-40 font-semibold">
-                Memory 사용률
-              </TableHead>
-              <TableHead className="w-36 font-semibold">GPU 사용률</TableHead>
-              <TableHead className="font-semibold">Disk Pressure</TableHead>
-              <TableHead className="font-semibold">Mem Pressure</TableHead>
-              <TableHead className="font-semibold">Pods</TableHead>
-              <TableHead className="font-semibold"></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {nodeData.map(node => (
-              <TableRow key={node.name} className="hover:bg-muted/30">
-                {/* 노드명 */}
-                <TableCell className="font-mono text-sm font-medium">
-                  {node.name}
-                </TableCell>
-
-                {/* 상태 */}
-                <TableCell>{getNodeStatusBadge(node.status)}</TableCell>
-
-                {/* Role */}
-                <TableCell>{getNodeRoleBadge(node.role)}</TableCell>
-
-                {/* CPU progress bar */}
-                <TableCell>
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-xs">
-                      <span className="text-muted-foreground">CPU</span>
-                      <span
-                        className={
-                          node.cpuUsage >= 80
-                            ? 'font-medium text-red-500'
-                            : 'text-muted-foreground'
-                        }
-                      >
-                        {node.cpuUsage}%
-                      </span>
-                    </div>
-                    <Progress
-                      value={node.cpuUsage}
-                      className={`h-1.5 ${getCpuProgressClass(node.cpuUsage)}`}
-                    />
-                  </div>
-                </TableCell>
-
-                {/* Memory progress bar */}
-                <TableCell>
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-xs">
-                      <span className="text-muted-foreground">MEM</span>
-                      <span
-                        className={
-                          node.memoryUsage >= 85
-                            ? 'font-medium text-red-500'
-                            : 'text-muted-foreground'
-                        }
-                      >
-                        {node.memoryUsage}%
-                      </span>
-                    </div>
-                    <Progress
-                      value={node.memoryUsage}
-                      className={`h-1.5 ${getMemProgressClass(node.memoryUsage)}`}
-                    />
-                  </div>
-                </TableCell>
-
-                {/* GPU progress bar (GPU 노드만) */}
-                <TableCell>
-                  {node.gpuUsage !== undefined ? (
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-muted-foreground">GPU</span>
-                        <span
-                          className={
-                            node.gpuUsage >= 90
-                              ? 'font-medium text-violet-500'
-                              : 'text-muted-foreground'
-                          }
-                        >
-                          {node.gpuUsage}%
-                        </span>
-                      </div>
-                      <Progress
-                        value={node.gpuUsage}
-                        className={`h-1.5 ${getGpuProgressClass(node.gpuUsage)}`}
-                      />
-                    </div>
-                  ) : (
-                    <span className="text-muted-foreground text-xs">-</span>
-                  )}
-                </TableCell>
-
-                {/* Disk Pressure */}
-                <TableCell>
-                  {node.diskPressure ? (
-                    <span className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
-                      <AlertTriangle className="size-3.5" />
-                      경고
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
-                      <CheckCircle className="size-3.5" />
-                      정상
-                    </span>
-                  )}
-                </TableCell>
-
-                {/* Memory Pressure */}
-                <TableCell>
-                  {node.memoryPressure ? (
-                    <span className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
-                      <AlertTriangle className="size-3.5" />
-                      경고
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
-                      <CheckCircle className="size-3.5" />
-                      정상
-                    </span>
-                  )}
-                </TableCell>
-
-                {/* Pod 수 */}
-                <TableCell className="text-sm">{node.podCount}</TableCell>
-
-                {/* YAML 버튼 */}
-                <TableCell>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 text-xs"
-                    onClick={() =>
-                      setSelectedYaml({ title: node.name, yaml: node.yaml })
-                    }
-                  >
-                    YAML
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-
-      {selectedYaml && (
-        <YamlViewerModal
-          open={!!selectedYaml}
-          onClose={() => setSelectedYaml(null)}
-          title={selectedYaml.title}
-          yaml={selectedYaml.yaml}
-        />
-      )}
-    </>
-  )
-}
-
-// ─────────────────────────────────────────────
-// GPU 탭 컨텐츠
-// ─────────────────────────────────────────────
-
-function GpuTab() {
-  return (
-    // TODO: Prometheus - DCGM_FI_DEV_GPU_UTIL, DCGM_FI_DEV_GPU_TEMP
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-      {gpuData.map(gpuNode => (
-        <Card key={gpuNode.nodeName} className="gap-4 py-4">
-          <CardHeader className="px-5 pb-0">
-            <div className="flex items-start justify-between">
-              <div>
-                <CardTitle className="font-mono text-sm">
-                  {gpuNode.nodeName}
-                </CardTitle>
-                <CardDescription className="mt-1 text-xs">
-                  {gpuNode.gpuModel} &times; {gpuNode.gpuCount}
-                </CardDescription>
-              </div>
-              <Badge variant="secondary" className="text-xs">
-                {gpuNode.gpuCount} GPUs
-              </Badge>
-            </div>
-          </CardHeader>
-
-          <CardContent className="px-5">
-            <div className="space-y-3">
-              {gpuNode.devices.map(device => (
-                <div
-                  key={device.index}
-                  className="bg-muted/20 rounded-lg border p-3"
-                >
-                  {/* GPU 헤더 행 */}
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="font-mono text-xs font-medium">
-                      GPU {device.index}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      {getGpuStatusBadge(device.status)}
-                    </div>
-                  </div>
-
-                  {/* 사용률 progress bar */}
-                  <div className="flex items-center gap-2">
-                    <Progress
-                      value={device.utilization}
-                      className={`h-2 flex-1 ${getGpuProgressClass(device.utilization)}`}
-                    />
-                    <span className="text-muted-foreground w-9 text-right text-xs tabular-nums">
-                      {device.utilization}%
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────
-// 스토리지 탭 컨텐츠
-// ─────────────────────────────────────────────
-
-function StorageTab() {
-  const [selectedYaml, setSelectedYaml] = useState<{
-    title: string
-    yaml: string
-  } | null>(null)
-
-  const totalUsed = storageBreakdown.reduce((sum, s) => sum + s.used, 0)
-  const totalCapacity = 85.5
-
-  return (
-    <div className="space-y-6">
-      {/* 스토리지 사용량 요약 */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        {/* 도넛 차트 대체 - 레이아웃으로 표현 */}
-        <Card className="gap-4 py-5">
-          <CardHeader className="px-5 pb-0">
-            <CardTitle className="text-sm">전체 스토리지 사용량</CardTitle>
-            <CardDescription className="text-xs">
-              {totalUsed.toFixed(1)} TB / {totalCapacity} TB 사용 중
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="px-5">
-            {/* 누적 bar로 도넛 차트 대체 표현 */}
-            <div className="mb-4 flex h-6 w-full overflow-hidden rounded-full">
-              {storageBreakdown.map(item => (
-                <div
-                  key={item.label}
-                  className={`${item.color} transition-all`}
-                  style={{ width: `${(item.used / totalCapacity) * 100}%` }}
-                  title={`${item.label}: ${item.used}TB`}
-                />
-              ))}
-              {/* 잔여 용량 */}
-              <div
-                className="bg-muted"
-                style={{
-                  width: `${((totalCapacity - totalUsed) / totalCapacity) * 100}%`,
-                }}
-              />
-            </div>
-
-            {/* 범례 */}
-            <div className="space-y-2">
-              {storageBreakdown.map(item => (
-                <div key={item.label} className="flex items-center gap-2">
-                  <div className={`size-2.5 rounded-full ${item.color}`} />
-                  <span className="text-muted-foreground flex-1 text-xs">
-                    {item.label}
-                  </span>
-                  <span className="text-xs font-medium">{item.used} TB</span>
-                  <span className="text-muted-foreground w-12 text-right text-xs">
-                    {((item.used / totalCapacity) * 100).toFixed(1)}%
-                  </span>
-                </div>
-              ))}
-              <div className="flex items-center gap-2 border-t pt-1">
-                <div className="bg-muted size-2.5 rounded-full" />
-                <span className="text-muted-foreground flex-1 text-xs">
-                  여유 공간
-                </span>
-                <span className="text-xs font-medium">
-                  {(totalCapacity - totalUsed).toFixed(1)} TB
-                </span>
-                <span className="text-muted-foreground w-12 text-right text-xs">
-                  {(
-                    ((totalCapacity - totalUsed) / totalCapacity) *
-                    100
-                  ).toFixed(1)}
-                  %
-                </span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* 스토리지 클래스별 상태 카드 */}
-        <Card className="gap-4 py-5">
-          <CardHeader className="px-5 pb-0">
-            <CardTitle className="text-sm">StorageClass 현황</CardTitle>
-            <CardDescription className="text-xs">
-              사용 가능한 스토리지 클래스 목록
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="px-5">
-            <div className="space-y-3">
-              {[
-                {
-                  name: 'ceph-rbd',
-                  type: 'Block',
-                  total: '80Ti',
-                  status: 'Active',
-                },
-                {
-                  name: 'nfs-client',
-                  type: 'NFS',
-                  total: '5Ti',
-                  status: 'Active',
-                },
-                {
-                  name: 'local-ssd',
-                  type: 'Local',
-                  total: '500Gi',
-                  status: 'Active',
-                },
-              ].map(sc => (
-                <div
-                  key={sc.name}
-                  className="bg-muted/20 flex items-center justify-between rounded-lg border px-3 py-2"
-                >
-                  <div>
-                    <p className="font-mono text-xs font-medium">{sc.name}</p>
-                    <p className="text-muted-foreground text-xs">
-                      {sc.type} · {sc.total}
-                    </p>
-                  </div>
-                  <Badge className="border-emerald-500/30 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-                    {sc.status}
-                  </Badge>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* PVC 목록 */}
-      <div>
-        <h3 className="mb-3 text-sm font-semibold">PVC 목록</h3>
-        <div className="rounded-lg border">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-muted/40">
-                <TableHead className="font-semibold">PVC 이름</TableHead>
-                <TableHead className="font-semibold">Namespace</TableHead>
-                <TableHead className="font-semibold">용량</TableHead>
-                <TableHead className="w-48 font-semibold">사용률</TableHead>
-                <TableHead className="font-semibold">상태</TableHead>
-                <TableHead className="font-semibold"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {pvcData.map(pvc => (
-                <TableRow key={pvc.name} className="hover:bg-muted/30">
-                  <TableCell className="font-mono text-xs font-medium">
-                    {pvc.name}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground font-mono text-xs">
-                    {pvc.namespace}
-                  </TableCell>
-                  <TableCell className="text-sm">{pvc.capacity}</TableCell>
-                  <TableCell>
-                    {pvc.status === 'Bound' ? (
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-xs">
-                          <span className="text-muted-foreground">사용 중</span>
-                          <span
-                            className={
-                              pvc.usagePercent >= 80
-                                ? 'font-medium text-amber-600 dark:text-amber-400'
-                                : 'text-muted-foreground'
-                            }
-                          >
-                            {pvc.usagePercent}%
-                          </span>
-                        </div>
-                        <Progress
-                          value={pvc.usagePercent}
-                          className={`h-1.5 ${
-                            pvc.usagePercent >= 80
-                              ? '[&>[data-slot=progress-indicator]]:bg-amber-500'
-                              : '[&>[data-slot=progress-indicator]]:bg-blue-500'
-                          }`}
-                        />
-                      </div>
-                    ) : (
-                      <span className="text-muted-foreground text-xs">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {pvc.status === 'Bound' ? (
-                      <Badge className="border-emerald-500/30 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-                        Bound
-                      </Badge>
-                    ) : (
-                      <Badge className="border-amber-500/30 bg-amber-500/15 text-amber-600 dark:text-amber-400">
-                        {pvc.status}
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 px-2 text-xs"
-                      onClick={() =>
-                        setSelectedYaml({ title: pvc.name, yaml: pvc.yaml })
-                      }
-                    >
-                      YAML
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      </div>
-
-      {selectedYaml && (
-        <YamlViewerModal
-          open={!!selectedYaml}
-          onClose={() => setSelectedYaml(null)}
-          title={selectedYaml.title}
-          yaml={selectedYaml.yaml}
-        />
-      )}
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────
-// Queue/Worker 탭 컨텐츠
-// ─────────────────────────────────────────────
-
-function QueueTab() {
-  // 큐 상태 더미 데이터
-  const queueStats = {
-    waiting: 7,
-    processing: 3,
-    failed: 2,
-  }
-
-  return (
-    <div className="space-y-5">
-      {/* 큐 상태 카드 3개 */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Card className="gap-3 py-4">
-          <CardHeader className="px-5 pb-0">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-muted-foreground text-sm font-medium">
-                대기 중
-              </CardTitle>
-              <Layers className="text-muted-foreground size-4" />
-            </div>
-          </CardHeader>
-          <CardContent className="px-5">
-            <p className="text-3xl font-bold text-amber-600 dark:text-amber-400">
-              {queueStats.waiting}
-            </p>
-            <p className="text-muted-foreground mt-1 text-xs">
-              처리 대기 중인 작업
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="gap-3 py-4">
-          <CardHeader className="px-5 pb-0">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-muted-foreground text-sm font-medium">
-                처리 중
-              </CardTitle>
-              <Activity className="size-4 text-emerald-500" />
-            </div>
-          </CardHeader>
-          <CardContent className="px-5">
-            <p className="text-3xl font-bold text-emerald-600 dark:text-emerald-400">
-              {queueStats.processing}
-            </p>
-            <p className="text-muted-foreground mt-1 text-xs">
-              현재 실행 중인 작업
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="gap-3 py-4">
-          <CardHeader className="px-5 pb-0">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-muted-foreground text-sm font-medium">
-                실패
-              </CardTitle>
-              <XCircle className="size-4 text-red-500" />
-            </div>
-          </CardHeader>
-          <CardContent className="px-5">
-            <p className="text-3xl font-bold text-red-500">
-              {queueStats.failed}
-            </p>
-            <p className="text-muted-foreground mt-1 text-xs">
-              재시도 필요한 작업
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Worker 목록 테이블 */}
-      <div>
-        <h3 className="mb-3 text-sm font-semibold">Worker 목록</h3>
-        <div className="rounded-lg border">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-muted/40">
-                <TableHead className="font-semibold">Worker ID</TableHead>
-                <TableHead className="font-semibold">상태</TableHead>
-                <TableHead className="font-semibold">처리 중 Job</TableHead>
-                <TableHead className="font-semibold">처리 속도</TableHead>
-                <TableHead className="font-semibold">마지막 활동</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {workerData.map(worker => (
-                <TableRow key={worker.workerId} className="hover:bg-muted/30">
-                  <TableCell className="font-mono text-xs font-medium">
-                    {worker.workerId}
-                  </TableCell>
-                  <TableCell>{getWorkerStatusBadge(worker.status)}</TableCell>
-                  <TableCell className="font-mono text-xs">
-                    {worker.currentJob}
-                  </TableCell>
-                  <TableCell className="text-sm">{worker.throughput}</TableCell>
-                  <TableCell className="text-muted-foreground text-sm">
-                    {worker.lastActive}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-
-        {/* Worker 범례 */}
-        <div className="text-muted-foreground mt-3 flex items-center gap-4 text-xs">
-          <div className="flex items-center gap-1.5">
-            <Users className="size-3.5" />총 {workerData.length}개 Worker
-          </div>
-          <span>
-            Active {workerData.filter(w => w.status === 'Active').length}
-          </span>
-          <span>Idle {workerData.filter(w => w.status === 'Idle').length}</span>
-          <span className="text-red-500">
-            Failed {workerData.filter(w => w.status === 'Failed').length}
-          </span>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────
-// 메인 페이지
+// 메인 인프라 컴포넌트
 // ─────────────────────────────────────────────
 
 export default function InfrastructurePage() {
+  const [selectedYaml, setSelectedYaml] = useState<{ title: string; yaml: string } | null>(null)
+  const [nodesLoading, setNodesLoading] = useState(true)
+  const [nodesSummary, setNodesSummary] = useState<{
+    totalCount: number
+    readyCount: number
+    notReadyCount: number
+  } | null>(null)
+
+  const [podsLoading, setPodsLoading] = useState(true)
+  const [podsSummary, setPodsSummary] = useState<{
+    totalCount: number
+    runningCount: number
+    pendingCount: number
+    completedCount: number
+    failedCount: number
+    crashLoopCount: number
+    otherCount: number
+    pods: PodRow[]
+  } | null>(null)
+
+  // 정렬 및 필터링 상태
+  const [podSearch, setPodSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [sortConfig, setSortConfig] = useState<{ key: keyof PodRow; direction: 'asc' | 'desc' }>({
+    key: 'name',
+    direction: 'asc',
+  })
+  const [currentPage, setCurrentPage] = useState(1)
+  const ITEMS_PER_PAGE = 10
+
+  // 필터 변경 시 페이지 초기화
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [podSearch, statusFilter])
+
+  const fetchNodes = async () => {
+    setNodesLoading(true)
+    try {
+      const res = await fetch('/api/k8s/nodes')
+      if (!res.ok) throw new Error('API Response Error')
+      const json = await res.json()
+      setNodesSummary({
+        totalCount: json.totalCount,
+        readyCount: json.readyCount,
+        notReadyCount: json.notReadyCount
+      })
+    } catch (err) {
+      console.error('[Infrastructure] Fetch Nodes Error:', err)
+      setNodesSummary({ totalCount: 0, readyCount: 0, notReadyCount: 0 })
+    } finally {
+      setNodesLoading(false)
+    }
+  }
+
+  const fetchPods = async () => {
+    setPodsLoading(true)
+    try {
+      const res = await fetch('/api/k8s/pods')
+      if (!res.ok) throw new Error('API Response Error')
+      const json = await res.json()
+      setPodsSummary({
+        totalCount: json.totalCount,
+        runningCount: json.runningCount,
+        pendingCount: json.pendingCount,
+        completedCount: json.completedCount,
+        failedCount: json.failedCount,
+        crashLoopCount: json.crashLoopCount,
+        otherCount: json.otherCount || 0,
+        pods: json.pods || []
+      })
+    } catch (err) {
+      console.error('[Infrastructure] Fetch Pods Error:', err)
+      setPodsSummary({ totalCount: 0, runningCount: 0, pendingCount: 0, completedCount: 0, failedCount: 0, crashLoopCount: 0, otherCount: 0, pods: [] })
+    } finally {
+      setPodsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchNodes()
+    fetchPods()
+  }, [])
+
+  // Pod 필터링 및 정렬 로직
+  const filteredAndSortedPods = React.useMemo(() => {
+    if (!podsSummary?.pods) return []
+
+    let result = [...podsSummary.pods]
+
+    // 1. 검색 필터 (이름 또는 네임스페이스)
+    if (podSearch) {
+      const lowerSearch = podSearch.toLowerCase()
+      result = result.filter(
+        p => p.name.toLowerCase().includes(lowerSearch) || p.namespace.toLowerCase().includes(lowerSearch)
+      )
+    }
+
+    // 2. 상태 필터
+    if (statusFilter !== 'all') {
+      result = result.filter(p => p.status === statusFilter)
+    }
+
+    // 3. 정렬
+    result.sort((a, b) => {
+      const aVal = a[sortConfig.key]
+      const bVal = b[sortConfig.key]
+
+      if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1
+      if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1
+      return 0
+    })
+
+    return result
+  }, [podsSummary?.pods, podSearch, statusFilter, sortConfig])
+
+  // 페이지네이션 계산
+  const totalPages = Math.ceil(filteredAndSortedPods.length / ITEMS_PER_PAGE)
+  const paginatedPods = filteredAndSortedPods.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  )
+
+  const toggleSort = (key: keyof PodRow) => {
+    setSortConfig(prev => ({
+      key,
+      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc',
+    }))
+  }
+
+  // GPU 평균 사용률 계산
+  const allGpuDevices = gpuData.flatMap(n => n.devices)
+  const avgGpuUtilization = allGpuDevices.length > 0
+    ? Math.round(allGpuDevices.reduce((sum, dev) => sum + dev.utilization, 0) / allGpuDevices.length)
+    : 0
+  const busyGpuCount = allGpuDevices.filter(d => d.status === 'Occupied').length
+
   return (
     <div className="space-y-6">
-      {/* 페이지 헤더 */}
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Infrastructure</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          Pod / Node / GPU / Storage / Queue 상태
+          Cluster Resource & GPU Utilization
         </p>
       </div>
 
-      {/* 상단 요약 카드 4개 */}
-      <SummaryCards />
+      {/* 요약 카드 */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {/* 노드 요약 */}
+        <Card className="gap-3 py-4 shadow-sm border-none ring-1 ring-border overflow-hidden group hover:ring-primary/40 transition-all">
+          <CardHeader className="px-5 pb-0">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-muted-foreground text-[10px] font-bold uppercase tracking-widest">Total Nodes</CardTitle>
+              <Server className="text-muted-foreground size-4 group-hover:text-primary transition-colors" />
+            </div>
+          </CardHeader>
+          <CardContent className="px-5 pt-1">
+            <div className="text-4xl font-bold tracking-tighter">
+              {nodesLoading ? <Skeleton className="h-10 w-16" /> : nodesSummary?.totalCount}
+            </div>
+            <div className="mt-2 flex items-center gap-3 text-[10px] font-bold uppercase tabular-nums">
+              <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+                <CheckCircle className="size-3" /> RDY {nodesLoading ? '...' : nodesSummary?.readyCount}
+              </span>
+              <span className="flex items-center gap-1 text-red-500">
+                <XCircle className="size-3" /> ERR {nodesLoading ? '...' : nodesSummary?.notReadyCount}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
 
-      {/* 탭 구성 */}
+        {/* Pod 요약 */}
+        <Card className="gap-3 py-4 shadow-sm border-none ring-1 ring-border overflow-hidden group hover:ring-primary/40 transition-all">
+          <CardHeader className="px-5 pb-0">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-muted-foreground text-[10px] font-bold uppercase tracking-widest">Total Pods</CardTitle>
+              <Box className="text-muted-foreground size-4 group-hover:text-primary transition-colors" />
+            </div>
+          </CardHeader>
+          <CardContent className="px-5 pt-1">
+            <div className="text-4xl font-bold tracking-tighter">
+              {podsLoading ? <Skeleton className="h-10 w-16" /> : podsSummary?.totalCount}
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-y-2 gap-x-4 text-[9px] font-bold uppercase tabular-nums">
+              <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                <Activity className="size-3" /> RUN {podsLoading ? '..' : podsSummary?.runningCount}
+              </span>
+              <span className="flex items-center gap-1.5 text-amber-500">
+                <div className="size-1.5 rounded-full bg-amber-500 animate-pulse" /> PND {podsLoading ? '..' : podsSummary?.pendingCount}
+              </span>
+              <span className="flex items-center gap-1.5 text-blue-500">
+                <CheckCircle className="size-3" /> CPD {podsLoading ? '..' : podsSummary?.completedCount}
+              </span>
+              <span className="flex items-center gap-1.5 text-red-500">
+                <XCircle className="size-3" /> ERR {podsLoading ? '..' : (podsSummary ? podsSummary.failedCount + podsSummary.crashLoopCount : 0)}
+              </span>
+              {podsSummary && (podsSummary.otherCount ?? 0) > 0 && (
+                <span className="flex items-center gap-1.5 text-slate-500 col-span-2 border-t border-dashed pt-1.5 mt-0.5">
+                  <AlertTriangle className="size-3" /> OTH {podsSummary.otherCount} (Terminating/Unknown)
+                </span>
+              )}
+            </div>
+            {!podsLoading && (podsSummary?.crashLoopCount ?? 0) > 0 && (
+              <div className="mt-2 px-2 py-1 bg-red-500/10 border border-red-500/20 rounded text-[8px] font-bold text-red-600 dark:text-red-400 flex items-center gap-1.5 uppercase ">
+                <AlertTriangle className="size-2.5" /> {podsSummary?.crashLoopCount} CrashLoopBackOff Detected
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* GPU 평균 사용률 */}
+        <Card className="gap-3 py-4 shadow-sm border-none ring-1 ring-border border-t-4 border-t-violet-500 bg-violet-500/[0.02] group hover:bg-violet-500/[0.04] transition-all">
+          <CardHeader className="px-5 pb-0">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-violet-600 dark:text-violet-400 text-[10px] font-bold uppercase tracking-widest">Avg GPU Utilization</CardTitle>
+              <Cpu className="text-violet-500 size-4" />
+            </div>
+          </CardHeader>
+          <CardContent className="px-5 pt-1">
+            <div className="text-4xl font-bold tracking-tighter text-violet-600 dark:text-violet-400">
+              {avgGpuUtilization}%
+            </div>
+            <div className="mt-2 space-y-1.5">
+              <div className="flex items-center gap-2 text-[10px] font-bold text-violet-700/80 dark:text-violet-400/80 uppercase tracking-tight">
+                <Zap className="size-3" />
+                {busyGpuCount} / {allGpuDevices.length} GPUs Active
+              </div>
+              <Progress value={avgGpuUtilization} className={`h-1 bg-violet-200/50 dark:bg-violet-900/20 shadow-inner ${getGpuProgressClass(avgGpuUtilization)}`} />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       <Tabs defaultValue="pod" className="space-y-4">
-        <TabsList className="h-auto gap-1 p-1">
-          <TabsTrigger value="pod" className="gap-1.5">
-            <Box className="size-3.5" />
-            Pod
-          </TabsTrigger>
-          <TabsTrigger value="node" className="gap-1.5">
-            <Server className="size-3.5" />
-            Node
-          </TabsTrigger>
-          <TabsTrigger value="gpu" className="gap-1.5">
-            <Cpu className="size-3.5" />
-            GPU
-          </TabsTrigger>
-          <TabsTrigger value="storage" className="gap-1.5">
-            <HardDrive className="size-3.5" />
-            스토리지
-          </TabsTrigger>
-          <TabsTrigger value="queue" className="gap-1.5">
-            <Layers className="size-3.5" />
-            Queue/Worker
-          </TabsTrigger>
+        <TabsList className="h-12 gap-1 p-1 bg-muted/40 border shadow-inner rounded-xl ring-1 ring-border">
+          <TabsTrigger value="pod" className="gap-1.5 py-2 px-6 font-bold text-[11px] uppercase tracking-widest data-[state=active]:bg-background data-[state=active]:shadow-md rounded-lg"><Box className="size-3.5" />Pod</TabsTrigger>
+          <TabsTrigger value="node" className="gap-1.5 py-2 px-6 font-bold text-[11px] uppercase tracking-widest data-[state=active]:bg-background data-[state=active]:shadow-md rounded-lg"><Server className="size-3.5" />Node</TabsTrigger>
+          <TabsTrigger value="gpu" className="gap-1.5 py-2 px-6 font-bold text-[11px] uppercase tracking-widest data-[state=active]:bg-background data-[state=active]:shadow-md rounded-lg"><Cpu className="size-3.5" />GPU</TabsTrigger>
         </TabsList>
 
         {/* Pod 탭 */}
-        <TabsContent value="pod">
-          <PodTab />
+        <TabsContent value="pod" className="space-y-4">
+          <div className="flex flex-col sm:flex-row gap-4 items-end sm:items-center justify-between bg-card p-4 rounded-xl border ring-1 ring-border shadow-sm">
+             <div className="flex flex-1 items-center gap-3 w-full sm:max-w-md">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                  <Input 
+                    placeholder="Search Pod or Namespace..." 
+                    className="pl-9 h-10 bg-muted/20 border-none ring-1 ring-border focus-visible:ring-primary/50"
+                    value={podSearch}
+                    onChange={(e) => setPodSearch(e.target.value)}
+                  />
+                </div>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="w-[160px] h-10 bg-muted/20 border-none ring-1 ring-border">
+                    <div className="flex items-center gap-2">
+                      <Filter className="size-3.5 text-muted-foreground" />
+                      <SelectValue placeholder="Status" />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Statuses</SelectItem>
+                    <SelectItem value="Running">Running</SelectItem>
+                    <SelectItem value="Pending">Pending</SelectItem>
+                    <SelectItem value="Succeeded">Completed</SelectItem>
+                    <SelectItem value="Failed">Failed</SelectItem>
+                    <SelectItem value="CrashLoopBackOff">CrashLoop</SelectItem>
+                    <SelectItem value="Terminating">Terminating</SelectItem>
+                  </SelectContent>
+                </Select>
+             </div>
+             <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground bg-muted/30 px-3 py-1.5 rounded-full">
+               Showing {filteredAndSortedPods.length} / {podsSummary?.totalCount || 0} Pods
+             </div>
+          </div>
+
+          <div className="rounded-xl border bg-card shadow-sm overflow-hidden ring-1 ring-border border-none">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/50 hover:bg-muted/50 border-none border-b ring-1 ring-border">
+                  <TableHead className="pl-6 font-bold uppercase text-[10px] tracking-widest text-muted-foreground/70">
+                    <button onClick={() => toggleSort('namespace')} className="flex items-center gap-1 hover:text-foreground transition-colors">
+                      Namespace <ArrowUpDown className="size-3" />
+                    </button>
+                  </TableHead>
+                  <TableHead className="font-bold uppercase text-[10px] tracking-widest text-muted-foreground/70">
+                    <button onClick={() => toggleSort('name')} className="flex items-center gap-1 hover:text-foreground transition-colors">
+                      Pod Identifier <ArrowUpDown className="size-3" />
+                    </button>
+                  </TableHead>
+                  <TableHead className="font-bold uppercase text-[10px] tracking-widest text-muted-foreground/70">
+                    <button onClick={() => toggleSort('status' as any)} className="flex items-center gap-1 hover:text-foreground transition-colors">
+                      Health <ArrowUpDown className="size-3" />
+                    </button>
+                  </TableHead>
+                  <TableHead className="font-bold uppercase text-[10px] tracking-widest text-center text-muted-foreground/70">
+                    <button onClick={() => toggleSort('restarts')} className="flex items-center gap-1 mx-auto hover:text-foreground transition-colors">
+                      RST <ArrowUpDown className="size-3" />
+                    </button>
+                  </TableHead>
+                  <TableHead className="font-bold uppercase text-[10px] tracking-widest text-center text-muted-foreground/70">GPU</TableHead>
+                  <TableHead className="font-bold uppercase text-[10px] tracking-widest text-muted-foreground/70">
+                    <button onClick={() => toggleSort('age' as any)} className="flex items-center gap-1 hover:text-foreground transition-colors">
+                      Uptime <ArrowUpDown className="size-3" />
+                    </button>
+                  </TableHead>
+                  <TableHead></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {podsLoading ? (
+                  Array.from({ length: 10 }).map((_, i) => (
+                    <TableRow key={i}><TableCell colSpan={7} className="pl-6 py-4"><Skeleton className="h-6 w-full" /></TableCell></TableRow>
+                  ))
+                ) : paginatedPods.length === 0 ? (
+                  <TableRow><TableCell colSpan={7} className="text-center py-20 text-muted-foreground text-sm font-bold uppercase tracking-widest">No Pods Match Filters</TableCell></TableRow>
+                ) : paginatedPods.map(pod => (
+                  <TableRow key={pod.name} className="hover:bg-primary/[0.02] border-b last:border-0 group transition-colors">
+                    <TableCell className="pl-6 font-mono text-[10px] text-muted-foreground font-bold tracking-tight">{pod.namespace.toUpperCase()}</TableCell>
+                    <TableCell className="max-w-[280px] truncate font-mono text-xs text-foreground tracking-tight">{pod.name}</TableCell>
+                    <TableCell>{getPodStatusBadge(pod.status)}</TableCell>
+                    <TableCell className="text-center font-bold font-mono text-xs text-muted-foreground/80 tabular-nums">{pod.restarts}</TableCell>
+                    <TableCell className="text-center">
+                      {pod.hasGpu && <Badge className="bg-violet-500 text-white border-none text-[8px] h-3.5 px-1 font-bold tracking-tighter shadow-[0_0_5px_rgba(139,92,246,0.3)]">GPU</Badge>}
+                    </TableCell>
+                    <TableCell className="text-[10px] font-bold text-muted-foreground/60 tabular-nums">{pod.age.toUpperCase()}</TableCell>
+                    <TableCell className="pr-6 text-right">
+                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 hover:bg-primary/10 hover:text-primary transition-all rounded-md" onClick={() => setSelectedYaml({ title: pod.name, yaml: pod.yaml })}><Layers className="size-3.5" /></Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          {/* 페이지네이션 컨트롤 */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-2 py-4 border-t border-dashed">
+              <div className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">
+                Page {currentPage} of {totalPages}
+              </div>
+              <div className="flex items-center gap-1">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="h-8 w-8 p-0" 
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                {Array.from({ length: totalPages }).map((_, i) => {
+                  const p = i + i + 1 // dummy offset fix for map loop if needed, but standard p=i+1 is fine
+                  const pageNum = i + 1
+                  if (totalPages > 7 && (pageNum < currentPage - 2 || pageNum > currentPage + 2) && pageNum !== 1 && pageNum !== totalPages) {
+                    if (pageNum === currentPage - 3 || pageNum === currentPage + 3) return <span key={pageNum} className="text-muted-foreground px-1">...</span>
+                    return null
+                  }
+                  return (
+                    <Button
+                      key={pageNum}
+                      variant={pageNum === currentPage ? 'default' : 'outline'}
+                      size="sm"
+                      className="h-8 w-8 p-0 text-[10px] font-bold"
+                      onClick={() => setCurrentPage(pageNum)}
+                    >
+                      {pageNum}
+                    </Button>
+                  )
+                })}
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="h-8 w-8 p-0" 
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </TabsContent>
 
         {/* Node 탭 */}
         <TabsContent value="node">
-          <NodeTab />
+          <div className="rounded-xl border bg-card shadow-sm overflow-hidden ring-1 ring-border border-none">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/50 hover:bg-muted/50 border-none border-b ring-1 ring-border">
+                  <TableHead className="pl-6 font-bold uppercase text-[10px] tracking-widest text-muted-foreground/70">Host Identifier</TableHead>
+                  <TableHead className="font-bold uppercase text-[10px] tracking-widest text-muted-foreground/70">Status</TableHead>
+                  <TableHead className="font-bold uppercase text-[10px] tracking-widest text-muted-foreground/70">Role</TableHead>
+                  <TableHead className="w-72 font-bold uppercase text-[10px] tracking-widest text-muted-foreground/70">Utilization</TableHead>
+                  <TableHead className="font-bold uppercase text-[10px] tracking-widest text-center text-muted-foreground/70">Pods</TableHead>
+                  <TableHead className="font-bold uppercase text-[10px] tracking-widest text-muted-foreground/70">Hardware Alerts</TableHead>
+                  <TableHead></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {nodeData.map(node => (
+                  <TableRow key={node.name} className="hover:bg-primary/[0.02] border-b last:border-0 group transition-colors">
+                    <TableCell className="pl-6 font-mono text-xs font-bold tracking-tighter text-foreground">{node.name.toUpperCase()}</TableCell>
+                    <TableCell>{getNodeStatusBadge(node.status)}</TableCell>
+                    <TableCell>{getNodeRoleBadge(node.role)}</TableCell>
+                    <TableCell>
+                      <div className="space-y-2 py-3 px-1">
+                        <div className="flex justify-between text-[9px] uppercase font-bold text-muted-foreground/90 tabular-nums tracking-widest">
+                          <span className="flex items-center gap-1.5"><div className="size-1 rounded-full bg-emerald-500" /> CPU {node.cpuUsage}%</span>
+                          <span className="flex items-center gap-1.5"><div className="size-1 rounded-full bg-blue-500" /> MEM {node.memoryUsage}%</span>
+                        </div>
+                        <div className="flex gap-2">
+                           <Progress value={node.cpuUsage} className={`h-1.5 flex-1 shadow-inner rounded-full ${getCpuProgressClass(node.cpuUsage)}`} />
+                           <Progress value={node.memoryUsage} className={`h-1.5 flex-1 shadow-inner rounded-full ${getMemProgressClass(node.memoryUsage)}`} />
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-center font-bold font-mono text-xs tabular-nums text-foreground/80">{node.podCount}</TableCell>
+                    <TableCell>
+                      <div className="flex gap-1.5">
+                        {node.diskPressure ? <Badge variant="destructive" className="h-4 text-[8px] px-1 font-bold  tracking-tighter">DISK_ALERT</Badge> : <span className="text-[9px] font-bold text-emerald-500 uppercase tracking-widest flex items-center gap-1"><div className="size-1 rounded-full bg-emerald-500 shadow-[0_0_3px_#10b881]" />Optimal</span>}
+                      </div>
+                    </TableCell>
+                    <TableCell className="pr-6 text-right">
+                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 hover:bg-primary/10 hover:text-primary transition-all rounded-md" onClick={() => setSelectedYaml({ title: node.name, yaml: node.yaml })}><Layers className="size-3.5" /></Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </TabsContent>
 
         {/* GPU 탭 */}
         <TabsContent value="gpu">
-          <GpuTab />
-        </TabsContent>
-
-        {/* 스토리지 탭 */}
-        <TabsContent value="storage">
-          <StorageTab />
-        </TabsContent>
-
-        {/* Queue/Worker 탭 */}
-        <TabsContent value="queue">
-          <QueueTab />
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+            {gpuData.map(gpuNode => (
+              <Card key={gpuNode.nodeName} className="border-l-4 border-l-violet-500 shadow-lg overflow-hidden ring-1 ring-border border-none bg-card/50 backdrop-blur-sm group hover:ring-violet-500/40 transition-all">
+                <CardHeader className="pb-3 bg-muted/30 border-b">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <CardTitle className="font-mono text-sm flex items-center gap-2 font-bold tracking-tight">
+                        <div className="p-1 bg-violet-500/10 rounded-md">
+                           <Cpu className="size-4 text-violet-500 animate-pulse" />
+                        </div>
+                        {gpuNode.nodeName.toUpperCase()}
+                      </CardTitle>
+                      <CardDescription className="text-[10px] font-bold mt-2 text-muted-foreground/80 tracking-widest flex items-center gap-2">
+                        {gpuNode.gpuModel} &middot; <span className="text-violet-500">{gpuNode.devices.length} ACCELERATORS</span>
+                      </CardDescription>
+                    </div>
+                    <Badge className="bg-violet-600 text-white border-none text-[8px] h-5 font-bold tracking-widest shadow-[0_0_10px_rgba(139,92,246,0.2)]">LIVE</Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-5 grid grid-cols-2 gap-4">
+                  {gpuNode.devices.map(dev => (
+                    <div key={dev.index} className="bg-background/80 rounded-xl p-4 border shadow-sm hover:border-violet-500/40 hover:shadow-md transition-all group/item">
+                      <div className="flex justify-between items-center mb-4">
+                        <div className="flex items-center gap-2">
+                           <span className="text-[10px] font-bold text-muted-foreground/60 font-mono">XID_{dev.index}</span>
+                        </div>
+                        {getGpuStatusBadge(dev.status)}
+                      </div>
+                      <Progress value={dev.utilization} className={`h-2.5 mb-4 shadow-inner rounded-full ${getGpuProgressClass(dev.utilization)}`} />
+                      <div className="flex justify-between items-end text-[10px] font-bold font-mono">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-[8px] text-muted-foreground/40 uppercase tracking-widest font-bold">Compute Load</span>
+                          <span className="text-violet-500 text-lg leading-none ">{dev.utilization}%</span>
+                        </div>
+                        <div className="text-right flex flex-col gap-0.5">
+                          <span className="text-[8px] text-muted-foreground/40 uppercase tracking-widest font-bold">Metrics</span>
+                          <span className="text-[10px] leading-none text-foreground/80 tabular-nums">{dev.temperature}°C / {dev.power}W</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         </TabsContent>
       </Tabs>
+
+      {/* YAML 뷰어 모달 */}
+      {selectedYaml && (
+        <YamlViewerModal open={!!selectedYaml} onClose={() => setSelectedYaml(null)} title={selectedYaml.title} yaml={selectedYaml.yaml} />
+      )}
     </div>
   )
 }
