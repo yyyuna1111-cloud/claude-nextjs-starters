@@ -92,13 +92,15 @@ const C = {
 } as const
 
 const CHART_GRID = 'hsl(var(--border))'
-const CHART_TICK = 'hsl(var(--muted-foreground))'
+const CHART_TICK = 'currentColor'
 const TOOLTIP_STYLE = {
-  backgroundColor: 'hsl(var(--card))',
+  backgroundColor: 'hsl(var(--popover))',
   border: '1px solid hsl(var(--border))',
-  borderRadius: '6px',
-  color: 'hsl(var(--card-foreground))',
+  borderRadius: '8px',
+  color: 'hsl(var(--popover-foreground))',
   fontSize: 12,
+  boxShadow: '0 8px 24px rgba(0,0,0,0.1)',
+  padding: '8px 12px',
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -243,9 +245,22 @@ function RetrievalTab({ version }: { version: RagVersion }) {
             <SectionLabel>검색 품질 주간 트렌드</SectionLabel>
             <ResponsiveContainer width="100%" height={190}>
               <ComposedChart data={embeddingQualityTrend} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid stroke={CHART_GRID} strokeDasharray="3 3" />
-                <XAxis dataKey="week" tick={{ fill: CHART_TICK, fontSize: 10 }} />
-                <YAxis domain={[0.75, 0.95]} tick={{ fill: CHART_TICK, fontSize: 10 }} tickFormatter={(v) => v.toFixed(2)} />
+                <CartesianGrid stroke={CHART_GRID} strokeDasharray="3 3" vertical={false} />
+                <XAxis 
+                  dataKey="week" 
+                  tick={{ fill: CHART_TICK, fontSize: 10 }} 
+                  className="text-muted-foreground"
+                  axisLine={{ stroke: 'hsl(var(--border))' }}
+                  tickLine={{ stroke: 'hsl(var(--border))' }}
+                />
+                <YAxis 
+                  domain={[0.75, 0.95]} 
+                  tick={{ fill: CHART_TICK, fontSize: 10 }} 
+                  className="text-muted-foreground"
+                  axisLine={{ stroke: 'hsl(var(--border))' }}
+                  tickLine={{ stroke: 'hsl(var(--border))' }}
+                  tickFormatter={(v) => v.toFixed(2)} 
+                />
                 <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v) => [Number(v).toFixed(3)]} />
                 <Line type="monotone" dataKey="ndcg10"   stroke={C.blue}   strokeWidth={2} dot={{ r: 4, fill: C.blue }}   name="NDCG@10"   />
                 <Line type="monotone" dataKey="mrr"      stroke={C.purple} strokeWidth={2} dot={{ r: 4, fill: C.purple }} name="MRR"       />
@@ -306,9 +321,21 @@ function RetrievalTab({ version }: { version: RagVersion }) {
             <SectionLabel>임베딩 레이턴시 추이 (12시간)</SectionLabel>
             <ResponsiveContainer width="100%" height={190}>
               <LineChart data={embeddingLatencyHistory} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                <CartesianGrid stroke={CHART_GRID} strokeDasharray="3 3" />
-                <XAxis dataKey="time" tick={{ fill: CHART_TICK, fontSize: 10 }} />
-                <YAxis unit="ms" tick={{ fill: CHART_TICK, fontSize: 10 }} />
+                <CartesianGrid stroke={CHART_GRID} strokeDasharray="3 3" vertical={false} />
+                <XAxis 
+                  dataKey="time" 
+                  tick={{ fill: CHART_TICK, fontSize: 10 }} 
+                  className="text-muted-foreground"
+                  axisLine={{ stroke: 'hsl(var(--border))' }}
+                  tickLine={{ stroke: 'hsl(var(--border))' }}
+                />
+                <YAxis 
+                  unit="ms" 
+                  tick={{ fill: CHART_TICK, fontSize: 10 }} 
+                  className="text-muted-foreground"
+                  axisLine={{ stroke: 'hsl(var(--border))' }}
+                  tickLine={{ stroke: 'hsl(var(--border))' }}
+                />
                 <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v) => [`${v}ms`]} />
                 <Line type="monotone" dataKey="p50" stroke={C.green}  strokeWidth={2} dot={false} name="p50" />
                 <Line type="monotone" dataKey="p95" stroke={C.yellow} strokeWidth={2} dot={false} name="p95" />
@@ -324,9 +351,20 @@ function RetrievalTab({ version }: { version: RagVersion }) {
             <SectionLabel>임베딩 처리량 추이 (12시간)</SectionLabel>
             <ResponsiveContainer width="100%" height={190}>
               <LineChart data={embeddingRpsHistory} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                <CartesianGrid stroke={CHART_GRID} strokeDasharray="3 3" />
-                <XAxis dataKey="time" tick={{ fill: CHART_TICK, fontSize: 10 }} />
-                <YAxis tick={{ fill: CHART_TICK, fontSize: 10 }} />
+                <CartesianGrid stroke={CHART_GRID} strokeDasharray="3 3" vertical={false} />
+                <XAxis 
+                  dataKey="time" 
+                  tick={{ fill: CHART_TICK, fontSize: 10 }} 
+                  className="text-muted-foreground"
+                  axisLine={{ stroke: 'hsl(var(--border))' }}
+                  tickLine={{ stroke: 'hsl(var(--border))' }}
+                />
+                <YAxis 
+                  tick={{ fill: CHART_TICK, fontSize: 10 }} 
+                  className="text-muted-foreground"
+                  axisLine={{ stroke: 'hsl(var(--border))' }}
+                  tickLine={{ stroke: 'hsl(var(--border))' }}
+                />
                 <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v) => [`${Number(v).toLocaleString()}/s`]} />
                 <Line type="monotone" dataKey="prod"    stroke={C.green}  strokeWidth={2} dot={false} name="prod" />
                 <Line type="monotone" dataKey="staging" stroke={C.yellow} strokeWidth={2} dot={false} name="staging" strokeDasharray="5 5" />
@@ -342,10 +380,27 @@ function RetrievalTab({ version }: { version: RagVersion }) {
             <ResponsiveContainer width="100%" height={190}>
               <ScatterChart margin={{ top: 5, right: 5, left: -20, bottom: 15 }}>
                 <CartesianGrid stroke={CHART_GRID} strokeDasharray="3 3" />
-                <XAxis dataKey="x" type="number" domain={[0.2, 1]} name="Retrieval Score"
-                  tick={{ fill: CHART_TICK, fontSize: 10 }}
-                  label={{ value: 'Retrieval', fill: CHART_TICK, fontSize: 10, position: 'insideBottom', offset: -8 }} />
-                <YAxis dataKey="y" type="number" domain={[0.3, 1]} name="Faithfulness" tick={{ fill: CHART_TICK, fontSize: 10 }} />
+                <XAxis 
+                  dataKey="x" 
+                  type="number" 
+                  domain={[0.2, 1]} 
+                  name="Retrieval Score"
+                  tick={{ fill: CHART_TICK, fontSize: 10 }} 
+                  className="text-muted-foreground"
+                  axisLine={{ stroke: 'hsl(var(--border))' }}
+                  tickLine={{ stroke: 'hsl(var(--border))' }}
+                  label={{ value: 'Retrieval', fill: 'currentColor', fontSize: 10, position: 'insideBottom', offset: -8 }} 
+                />
+                <YAxis 
+                  dataKey="y" 
+                  type="number" 
+                  domain={[0.3, 1]} 
+                  name="Faithfulness" 
+                  tick={{ fill: CHART_TICK, fontSize: 10 }} 
+                  className="text-muted-foreground"
+                  axisLine={{ stroke: 'hsl(var(--border))' }}
+                  tickLine={{ stroke: 'hsl(var(--border))' }}
+                />
                 <Tooltip contentStyle={TOOLTIP_STYLE} />
                 <Scatter data={successPts}  fill={C.green}  opacity={0.85} name="통과"     r={4} />
                 <Scatter data={retFailPts}  fill={C.orange} opacity={0.85} name="검색 실패" r={4} />
@@ -411,9 +466,22 @@ function RetrievalTab({ version }: { version: RagVersion }) {
               <SectionLabel>큐 대기 수 (Queue Size)</SectionLabel>
               <ResponsiveContainer width="100%" height={160}>
                 <LineChart data={inferenceQueueSizeHistory} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
-                  <CartesianGrid stroke={CHART_GRID} strokeDasharray="3 3" />
-                  <XAxis dataKey="time" tick={{ fill: CHART_TICK, fontSize: 9 }} interval={2} />
-                  <YAxis tick={{ fill: CHART_TICK, fontSize: 9 }} allowDecimals={false} />
+                  <CartesianGrid stroke={CHART_GRID} strokeDasharray="3 3" vertical={false} />
+                  <XAxis 
+                    dataKey="time" 
+                    tick={{ fill: CHART_TICK, fontSize: 9 }} 
+                    interval={2} 
+                    className="text-muted-foreground"
+                    axisLine={{ stroke: 'hsl(var(--border))' }}
+                    tickLine={{ stroke: 'hsl(var(--border))' }}
+                  />
+                  <YAxis 
+                    tick={{ fill: CHART_TICK, fontSize: 9 }} 
+                    allowDecimals={false} 
+                    className="text-muted-foreground"
+                    axisLine={{ stroke: 'hsl(var(--border))' }}
+                    tickLine={{ stroke: 'hsl(var(--border))' }}
+                  />
                   <Tooltip contentStyle={TOOLTIP_STYLE} />
                   <Line type="monotone" dataKey="queueSize" stroke={C.blue} strokeWidth={2} dot={false} name="Queue Size" />
                 </LineChart>
@@ -423,9 +491,22 @@ function RetrievalTab({ version }: { version: RagVersion }) {
               <SectionLabel>큐 대기 시간 P50 / P95 / P99</SectionLabel>
               <ResponsiveContainer width="100%" height={160}>
                 <LineChart data={inferenceQueueLatencyHistory} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
-                  <CartesianGrid stroke={CHART_GRID} strokeDasharray="3 3" />
-                  <XAxis dataKey="time" tick={{ fill: CHART_TICK, fontSize: 9 }} interval={2} />
-                  <YAxis unit="ms" tick={{ fill: CHART_TICK, fontSize: 9 }} />
+                  <CartesianGrid stroke={CHART_GRID} strokeDasharray="3 3" vertical={false} />
+                  <XAxis 
+                    dataKey="time" 
+                    tick={{ fill: CHART_TICK, fontSize: 9 }} 
+                    interval={2} 
+                    className="text-muted-foreground"
+                    axisLine={{ stroke: 'hsl(var(--border))' }}
+                    tickLine={{ stroke: 'hsl(var(--border))' }}
+                  />
+                  <YAxis 
+                    unit="ms" 
+                    tick={{ fill: CHART_TICK, fontSize: 9 }} 
+                    className="text-muted-foreground"
+                    axisLine={{ stroke: 'hsl(var(--border))' }}
+                    tickLine={{ stroke: 'hsl(var(--border))' }}
+                  />
                   <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v) => [`${v}ms`]} />
                   <Line type="monotone" dataKey="p50" stroke={C.green}  strokeWidth={2} dot={false} name="P50" />
                   <Line type="monotone" dataKey="p95" stroke={C.yellow} strokeWidth={2} dot={false} name="P95" />
@@ -438,9 +519,22 @@ function RetrievalTab({ version }: { version: RagVersion }) {
               <SectionLabel>초당 요청 수 (RPS)</SectionLabel>
               <ResponsiveContainer width="100%" height={160}>
                 <LineChart data={inferenceRpsHistory} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                  <CartesianGrid stroke={CHART_GRID} strokeDasharray="3 3" />
-                  <XAxis dataKey="time" tick={{ fill: CHART_TICK, fontSize: 9 }} interval={2} />
-                  <YAxis tick={{ fill: CHART_TICK, fontSize: 9 }} tickFormatter={(v) => v.toFixed(2)} />
+                  <CartesianGrid stroke={CHART_GRID} strokeDasharray="3 3" vertical={false} />
+                  <XAxis 
+                    dataKey="time" 
+                    tick={{ fill: CHART_TICK, fontSize: 9 }} 
+                    interval={2} 
+                    className="text-muted-foreground"
+                    axisLine={{ stroke: 'hsl(var(--border))' }}
+                    tickLine={{ stroke: 'hsl(var(--border))' }}
+                  />
+                  <YAxis 
+                    tick={{ fill: CHART_TICK, fontSize: 9 }} 
+                    tickFormatter={(v) => v.toFixed(2)} 
+                    className="text-muted-foreground"
+                    axisLine={{ stroke: 'hsl(var(--border))' }}
+                    tickLine={{ stroke: 'hsl(var(--border))' }}
+                  />
                   <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v) => [`${Number(v).toFixed(3)} req/s`]} />
                   <Line type="monotone" dataKey="rps" stroke={C.blue} strokeWidth={2} dot={false} name="RPS" />
                 </LineChart>
@@ -454,9 +548,22 @@ function RetrievalTab({ version }: { version: RagVersion }) {
               <div className="col-span-2">
                 <ResponsiveContainer width="100%" height={160}>
                   <LineChart data={inferenceHttpStatusRpsHistory} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                    <CartesianGrid stroke={CHART_GRID} strokeDasharray="3 3" />
-                    <XAxis dataKey="time" tick={{ fill: CHART_TICK, fontSize: 9 }} interval={2} />
-                    <YAxis tick={{ fill: CHART_TICK, fontSize: 9 }} tickFormatter={(v) => v.toFixed(3)} />
+                    <CartesianGrid stroke={CHART_GRID} strokeDasharray="3 3" vertical={false} />
+                    <XAxis 
+                      dataKey="time" 
+                      tick={{ fill: CHART_TICK, fontSize: 9 }} 
+                      interval={2} 
+                      className="text-muted-foreground"
+                      axisLine={{ stroke: 'hsl(var(--border))' }}
+                      tickLine={{ stroke: 'hsl(var(--border))' }}
+                    />
+                    <YAxis 
+                      tick={{ fill: CHART_TICK, fontSize: 9 }} 
+                      tickFormatter={(v) => v.toFixed(3)} 
+                      className="text-muted-foreground"
+                      axisLine={{ stroke: 'hsl(var(--border))' }}
+                      tickLine={{ stroke: 'hsl(var(--border))' }}
+                    />
                     <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v) => [`${Number(v).toFixed(3)} req/s`]} />
                     <Line type="monotone" dataKey="s200" stroke={C.green}  strokeWidth={2} dot={false} name="200" />
                     <Line type="monotone" dataKey="s404" stroke={C.yellow} strokeWidth={2} dot={false} name="404" />
@@ -717,7 +824,11 @@ function GenerationTab({ version }: { version: RagVersion }) {
             <ResponsiveContainer width="100%" height={210}>
               <RadarChart data={radar} margin={{ top: 5, right: 20, bottom: 5, left: 20 }}>
                 <PolarGrid stroke={CHART_GRID} />
-                <PolarAngleAxis dataKey="metric" tick={{ fill: CHART_TICK, fontSize: 10 }} />
+                <PolarAngleAxis 
+                  dataKey="metric" 
+                  tick={{ fill: CHART_TICK, fontSize: 10 }} 
+                  className="text-muted-foreground"
+                />
                 <Radar name={version}   dataKey="current"  stroke={C.blue}   fill={C.blue}   fillOpacity={0.2}  strokeWidth={2} />
                 <Radar name="이전 버전" dataKey="previous" stroke={C.purple} fill={C.purple} fillOpacity={0.08} strokeWidth={1.5} strokeDasharray="4 4" />
                 <Tooltip contentStyle={TOOLTIP_STYLE} />
@@ -754,9 +865,21 @@ function GenerationTab({ version }: { version: RagVersion }) {
             <SectionLabel>일별 성능 트렌드 (5일) · {version}</SectionLabel>
             <ResponsiveContainer width="100%" height={200}>
               <ComposedChart data={trend} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                <CartesianGrid stroke={CHART_GRID} strokeDasharray="3 3" />
-                <XAxis dataKey="day" tick={{ fill: CHART_TICK, fontSize: 10 }} />
-                <YAxis domain={[65, 100]} tick={{ fill: CHART_TICK, fontSize: 10 }} />
+                <CartesianGrid stroke={CHART_GRID} strokeDasharray="3 3" vertical={false} />
+                <XAxis 
+                  dataKey="day" 
+                  tick={{ fill: CHART_TICK, fontSize: 10 }} 
+                  className="text-muted-foreground"
+                  axisLine={{ stroke: 'hsl(var(--border))' }}
+                  tickLine={{ stroke: 'hsl(var(--border))' }}
+                />
+                <YAxis 
+                  domain={[65, 100]} 
+                  tick={{ fill: CHART_TICK, fontSize: 10 }} 
+                  className="text-muted-foreground"
+                  axisLine={{ stroke: 'hsl(var(--border))' }}
+                  tickLine={{ stroke: 'hsl(var(--border))' }}
+                />
                 <Tooltip contentStyle={TOOLTIP_STYLE} />
                 <Line type="monotone" dataKey="passRate"     stroke={C.green}  strokeWidth={2} dot={{ r: 3, fill: C.green }}  name="통과율" />
                 <Line type="monotone" dataKey="faithfulness" stroke={C.blue}   strokeWidth={2} dot={{ r: 3, fill: C.blue }}   name="Faithfulness" />
@@ -773,8 +896,22 @@ function GenerationTab({ version }: { version: RagVersion }) {
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={ragFlowData} layout="vertical" margin={{ top: 0, right: 10, left: 10, bottom: 0 }}>
                 <CartesianGrid stroke={CHART_GRID} strokeDasharray="3 3" horizontal={false} />
-                <XAxis type="number" tick={{ fill: CHART_TICK, fontSize: 10 }} />
-                <YAxis type="category" dataKey="category" tick={{ fill: CHART_TICK, fontSize: 10 }} width={70} />
+                <XAxis 
+                  type="number" 
+                  tick={{ fill: CHART_TICK, fontSize: 10 }} 
+                  className="text-muted-foreground"
+                  axisLine={{ stroke: 'hsl(var(--border))' }}
+                  tickLine={{ stroke: 'hsl(var(--border))' }}
+                />
+                <YAxis 
+                  type="category" 
+                  dataKey="category" 
+                  tick={{ fill: CHART_TICK, fontSize: 10 }} 
+                  width={70} 
+                  className="text-muted-foreground"
+                  axisLine={{ stroke: 'hsl(var(--border))' }}
+                  tickLine={{ stroke: 'hsl(var(--border))' }}
+                />
                 <Tooltip contentStyle={TOOLTIP_STYLE} />
                 <Bar dataKey="통과" stackId="a" fill={C.green} fillOpacity={0.8} />
                 <Bar dataKey="실패" stackId="a" fill={C.red}   fillOpacity={0.8} radius={[0, 3, 3, 0]} />

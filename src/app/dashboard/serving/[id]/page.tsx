@@ -382,17 +382,29 @@ export default function ISVCDetailPage() {
                       { time: '14:30', pod1: 0, pod2: 0 },
                     ]}
                   >
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
                     <XAxis 
                       dataKey="time" 
                       fontSize={10} 
-                      stroke="#888888" 
-                      tickLine={false} 
-                      axisLine={false}
+                      tick={{ fill: 'currentColor' }}
+                      className="text-muted-foreground"
+                      tickLine={{ stroke: 'hsl(var(--border))' }} 
+                      axisLine={{ stroke: 'hsl(var(--border))' }}
                       interval={8}
                     />
-                    <YAxis fontSize={10} stroke="#888888" tickLine={false} axisLine={false} />
-                    <Tooltip contentStyle={{ fontSize: '12px' }} />
+                    <YAxis 
+                      fontSize={10} 
+                      tick={{ fill: 'currentColor' }}
+                      className="text-muted-foreground"
+                      tickLine={{ stroke: 'hsl(var(--border))' }} 
+                      axisLine={{ stroke: 'hsl(var(--border))' }} 
+                    />
+                    <Tooltip contentStyle={{ 
+                      backgroundColor: 'hsl(var(--popover))',
+                      color: 'hsl(var(--popover-foreground))',
+                      border: '1px solid hsl(var(--border))',
+                      fontSize: '12px' 
+                    }} />
                     <Bar name="Pod 1" dataKey="pod1" stackId="a" fill="#3b82f6" />
                     <Bar name="Pod 2" dataKey="pod2" stackId="a" fill="#10b981" />
                   </BarChart>
@@ -423,17 +435,29 @@ export default function ISVCDetailPage() {
                       { time: '14:30', pod1: 3, pod2: 2 },
                     ]}
                   >
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
                     <XAxis 
                       dataKey="time" 
                       fontSize={10} 
-                      stroke="#888888" 
-                      tickLine={false} 
-                      axisLine={false}
+                      tick={{ fill: 'currentColor' }}
+                      className="text-muted-foreground"
+                      tickLine={{ stroke: 'hsl(var(--border))' }} 
+                      axisLine={{ stroke: 'hsl(var(--border))' }}
                       interval={8}
                     />
-                    <YAxis fontSize={10} stroke="#888888" tickLine={false} axisLine={false} />
-                    <Tooltip contentStyle={{ fontSize: '12px' }} />
+                    <YAxis 
+                      fontSize={10} 
+                      tick={{ fill: 'currentColor' }}
+                      className="text-muted-foreground"
+                      tickLine={{ stroke: 'hsl(var(--border))' }} 
+                      axisLine={{ stroke: 'hsl(var(--border))' }} 
+                    />
+                    <Tooltip contentStyle={{ 
+                      backgroundColor: 'hsl(var(--popover))',
+                      color: 'hsl(var(--popover-foreground))',
+                      border: '1px solid hsl(var(--border))',
+                      fontSize: '12px' 
+                    }} />
                     <Bar name="Pod 1" dataKey="pod1" stackId="a" fill="#3b82f6" />
                     <Bar name="Pod 2" dataKey="pod2" stackId="a" fill="#10b981" />
                   </BarChart>
@@ -464,16 +488,23 @@ export default function ISVCDetailPage() {
                       { time: '14:30', pod1: 1, pod2: 1, p1_details: { '500': 1 }, p2_details: { '503': 1 } },
                     ]}
                   >
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
                     <XAxis 
                       dataKey="time" 
                       fontSize={10} 
-                      stroke="#888888" 
-                      tickLine={false} 
-                      axisLine={false}
+                      tick={{ fill: 'currentColor' }}
+                      className="text-muted-foreground"
+                      tickLine={{ stroke: 'hsl(var(--border))' }} 
+                      axisLine={{ stroke: 'hsl(var(--border))' }}
                       interval={8}
                     />
-                    <YAxis fontSize={10} stroke="#888888" tickLine={false} axisLine={false} />
+                    <YAxis 
+                      fontSize={10} 
+                      tick={{ fill: 'currentColor' }}
+                      className="text-muted-foreground"
+                      tickLine={{ stroke: 'hsl(var(--border))' }} 
+                      axisLine={{ stroke: 'hsl(var(--border))' }} 
+                    />
                     <Tooltip 
                       content={({ active, payload }) => {
                         if (active && payload && payload.length) {
@@ -595,24 +626,32 @@ export default function ISVCDetailPage() {
                 }
                 margin={{ top: 5, right: 30, left: 0, bottom: 5 }}
               >
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
                 <XAxis
                   dataKey="time"
-                  stroke="#888888"
+                  tick={{ fill: 'currentColor' }}
+                  className="text-muted-foreground"
                   fontSize={12}
-                  tickLine={false}
-                  axisLine={false}
+                  tickLine={{ stroke: 'hsl(var(--border))' }}
+                  axisLine={{ stroke: 'hsl(var(--border))' }}
                   interval={8}
                 />
                 <YAxis
-                  stroke="#888888"
+                  tick={{ fill: 'currentColor' }}
+                  className="text-muted-foreground"
                   fontSize={12}
-                  tickLine={false}
-                  axisLine={false}
+                  tickLine={{ stroke: 'hsl(var(--border))' }}
+                  axisLine={{ stroke: 'hsl(var(--border))' }}
                   tickFormatter={(value) => `${value}${['cpu', 'memory', 'gpu'].includes(activeResourceTab) ? '%' : 'Gi'}`}
                 />
                 <Tooltip
-                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                  contentStyle={{ 
+                    backgroundColor: 'hsl(var(--popover))',
+                    color: 'hsl(var(--popover-foreground))',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)' 
+                  }}
                 />
                 <Legend iconType="circle" />
                 <Line
@@ -662,23 +701,31 @@ export default function ISVCDetailPage() {
                 ]}
                 margin={{ top: 5, right: 30, left: 0, bottom: 5 }}
               >
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
                 <XAxis
                   dataKey="time"
-                  stroke="#888888"
+                  tick={{ fill: 'currentColor' }}
+                  className="text-muted-foreground"
                   fontSize={12}
-                  tickLine={false}
-                  axisLine={false}
+                  tickLine={{ stroke: 'hsl(var(--border))' }}
+                  axisLine={{ stroke: 'hsl(var(--border))' }}
                 />
                 <YAxis
-                  stroke="#888888"
+                  tick={{ fill: 'currentColor' }}
+                  className="text-muted-foreground"
                   fontSize={12}
-                  tickLine={false}
-                  axisLine={false}
+                  tickLine={{ stroke: 'hsl(var(--border))' }}
+                  axisLine={{ stroke: 'hsl(var(--border))' }}
                   tickFormatter={(value) => `${value}`}
                 />
                 <Tooltip
-                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                  contentStyle={{ 
+                    backgroundColor: 'hsl(var(--popover))',
+                    color: 'hsl(var(--popover-foreground))',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)' 
+                  }}
                 />
                 <Legend iconType="circle" />
                 <Line
@@ -728,22 +775,30 @@ export default function ISVCDetailPage() {
                 ]}
                 margin={{ top: 5, right: 30, left: 0, bottom: 5 }}
               >
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
                 <XAxis
                   dataKey="time"
-                  stroke="#888888"
+                  tick={{ fill: 'currentColor' }}
+                  className="text-muted-foreground"
                   fontSize={12}
-                  tickLine={false}
-                  axisLine={false}
+                  tickLine={{ stroke: 'hsl(var(--border))' }}
+                  axisLine={{ stroke: 'hsl(var(--border))' }}
                 />
                 <YAxis
-                  stroke="#888888"
+                  tick={{ fill: 'currentColor' }}
+                  className="text-muted-foreground"
                   fontSize={12}
-                  tickLine={false}
-                  axisLine={false}
+                  tickLine={{ stroke: 'hsl(var(--border))' }}
+                  axisLine={{ stroke: 'hsl(var(--border))' }}
                 />
                 <Tooltip
-                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                  contentStyle={{ 
+                    backgroundColor: 'hsl(var(--popover))',
+                    color: 'hsl(var(--popover-foreground))',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)' 
+                  }}
                 />
                 <Legend iconType="circle" />
                 <Line
@@ -793,23 +848,31 @@ export default function ISVCDetailPage() {
                 ]}
                 margin={{ top: 5, right: 30, left: 0, bottom: 5 }}
               >
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
                 <XAxis
                   dataKey="time"
-                  stroke="#888888"
+                  tick={{ fill: 'currentColor' }}
+                  className="text-muted-foreground"
                   fontSize={12}
-                  tickLine={false}
-                  axisLine={false}
+                  tickLine={{ stroke: 'hsl(var(--border))' }}
+                  axisLine={{ stroke: 'hsl(var(--border))' }}
                 />
                 <YAxis
-                  stroke="#888888"
+                  tick={{ fill: 'currentColor' }}
+                  className="text-muted-foreground"
                   fontSize={12}
-                  tickLine={false}
-                  axisLine={false}
-                  tickFormatter={(value) => `${value}ms`}
+                  tickLine={{ stroke: 'hsl(var(--border))' }}
+                  axisLine={{ stroke: 'hsl(var(--border))' }}
+                  tickFormatter={ (value) => `${value}ms` }
                 />
                 <Tooltip
-                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                  contentStyle={{ 
+                    backgroundColor: 'hsl(var(--popover))',
+                    color: 'hsl(var(--popover-foreground))',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)' 
+                  }}
                 />
                 <Legend iconType="circle" />
                 <Line

@@ -1,8 +1,10 @@
 'use client'
 
+import * as React from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Play, Server, FlaskConical, ChevronDown, Network } from 'lucide-react'
+import { LayoutDashboard, Play, Server, FlaskConical, ChevronDown, Network, Sun, Moon } from 'lucide-react'
+import { useTheme } from 'next-themes'
 
 import { cn } from '@/lib/utils'
 
@@ -16,6 +18,12 @@ const navItems = [
 
 export function SidebarNav() {
   const pathname = usePathname()
+  const { theme, setTheme } = useTheme()
+  const [mounted, setMounted] = React.useState(false)
+
+  React.useEffect(() => {
+    setMounted(true)
+  }, [])
 
   return (
     <nav className="flex flex-col gap-1 px-2">
@@ -26,13 +34,13 @@ export function SidebarNav() {
           : pathname === item.href || pathname.startsWith(item.href + '/')
         
         const Icon = item.icon
-        const hasChildren = item.children && item.children.length > 0
+        const hasChildren = (item as any).children && (item as any).children.length > 0
         const isExpanded = isActive && hasChildren
 
         return (
           <div key={item.href}>
             <Link
-              href={hasChildren ? item.children![0].href : item.href}
+              href={hasChildren ? (item as any).children![0].href : item.href}
               className={cn(
                 'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
                 isActive
@@ -47,7 +55,7 @@ export function SidebarNav() {
 
             {isExpanded && (
               <div className="mt-0.5 ml-3 flex flex-col gap-0.5 border-l pl-3" style={{ borderColor: 'hsl(var(--border))' }}>
-                {item.children!.map(child => {
+                {(item as any).children!.map((child: any) => {
                   const childActive = pathname === child.href || pathname.startsWith(child.href + '/')
                   const ChildIcon = child.icon
                   return (
@@ -71,6 +79,36 @@ export function SidebarNav() {
           </div>
         )
       })}
+
+      <div className="mt-4 pt-4 border-t border-border/50">
+        <p className="px-3 mb-2 text-[10px] font-bold text-muted-foreground uppercase tracking-tight">Appearance</p>
+        <div className="flex flex-col gap-1">
+          <button
+            onClick={() => setTheme('light')}
+            className={cn(
+              'w-full flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+              mounted && theme === 'light'
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+            )}
+          >
+            <Sun className="size-4 shrink-0" />
+            <span>Light Mode</span>
+          </button>
+          <button
+            onClick={() => setTheme('dark')}
+            className={cn(
+              'w-full flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+              mounted && theme === 'dark'
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+            )}
+          >
+            <Moon className="size-4 shrink-0" />
+            <span>Dark Mode</span>
+          </button>
+        </div>
+      </div>
     </nav>
   )
 }

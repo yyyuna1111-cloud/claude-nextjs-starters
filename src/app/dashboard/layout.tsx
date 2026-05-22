@@ -9,6 +9,7 @@ import { BrainCircuit } from 'lucide-react'
 import { SidebarNav } from '@/components/dashboard/sidebar-nav'
 import { MobileNav } from '@/components/dashboard/mobile-nav'
 import { Separator } from '@/components/ui/separator'
+import { ThemeToggle } from '@/components/theme-toggle'
 
 export const metadata: Metadata = {
   title: {
@@ -26,7 +27,7 @@ export default function DashboardLayout({
   return (
     <div className="bg-background flex min-h-screen">
       {/* 데스크탑 사이드바 - md 이상에서 표시 */}
-      <aside className="hidden md:flex md:w-60 md:shrink-0 md:flex-col md:border-r">
+      <aside className="bg-sidebar text-sidebar-foreground hidden md:flex md:w-60 md:shrink-0 md:flex-col md:border-r">
         {/* 사이드바 헤더 - 로고 및 앱 이름 */}
         <div className="flex h-14 items-center gap-2 border-b px-4">
           <BrainCircuit className="text-primary size-5" />
@@ -52,14 +53,17 @@ export default function DashboardLayout({
       {/* 메인 영역 */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* 모바일 상단 헤더 */}
-        <header className="flex h-14 items-center gap-3 border-b px-4 md:hidden">
-          {/* 모바일 햄버거 메뉴 */}
-          <MobileNav />
-          <Separator orientation="vertical" className="h-5" />
-          <div className="flex items-center gap-2">
-            <BrainCircuit className="text-primary size-4" />
-            <span className="text-sm font-semibold">MLOps Dashboard</span>
+        <header className="flex h-14 items-center justify-between border-b px-4 md:hidden">
+          <div className="flex items-center gap-3">
+            {/* 모바일 햄버거 메뉴 */}
+            <MobileNav />
+            <Separator orientation="vertical" className="h-5" />
+            <div className="flex items-center gap-2">
+              <BrainCircuit className="text-primary size-4" />
+              <span className="text-sm font-semibold">MLOps Dashboard</span>
+            </div>
           </div>
+          <ThemeToggle />
         </header>
 
         {/* 페이지 콘텐츠 */}
