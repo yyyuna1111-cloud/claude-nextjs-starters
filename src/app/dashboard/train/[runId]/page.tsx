@@ -267,9 +267,9 @@ function StatusBadge({ status }: { status: TrainStatus }) {
 
 // Recharts 공통 툴팁 스타일
 const tooltipStyle = {
-  backgroundColor: '#1e293b',
-  color: '#f1f5f9',
-  border: '1px solid #334155',
+  backgroundColor: 'hsl(var(--popover))',
+  color: 'hsl(var(--popover-foreground))',
+  border: '1px solid hsl(var(--border))',
   borderRadius: '6px',
   fontSize: '12px',
 }
@@ -462,27 +462,35 @@ export default function TrainDetailPage({
                 >
                   <CartesianGrid
                     strokeDasharray="3 3"
-                    stroke="#334155"
-                    strokeOpacity={0.4}
+                    stroke="hsl(var(--border))"
+                    vertical={false}
                   />
                   <XAxis
                     dataKey="epoch"
-                    tick={{ fontSize: 11, fill: '#94a3b8' }}
+                    tick={{ fill: 'currentColor', fontSize: 11 }}
+                    className="text-muted-foreground"
+                    axisLine={{ stroke: 'hsl(var(--border))' }}
+                    tickLine={{ stroke: 'hsl(var(--border))' }}
                     label={{
                       value: 'Epoch',
                       position: 'insideBottomRight',
                       offset: -4,
                       fontSize: 11,
-                      fill: '#94a3b8',
+                      fill: 'currentColor',
                     }}
                   />
-                  <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} />
+                  <YAxis 
+                    tick={{ fill: 'currentColor', fontSize: 11 }} 
+                    className="text-muted-foreground"
+                    axisLine={{ stroke: 'hsl(var(--border))' }}
+                    tickLine={{ stroke: 'hsl(var(--border))' }}
+                  />
                   <Tooltip
                     contentStyle={tooltipStyle}
-                    labelStyle={{ color: '#94a3b8', marginBottom: 4 }}
+                    labelStyle={{ color: 'hsl(var(--muted-foreground))', marginBottom: 4 }}
                     labelFormatter={v => `Epoch ${v}`}
                   />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Legend wrapperStyle={{ fontSize: 12, color: 'hsl(var(--foreground))' }} />
                   <Line
                     type="monotone"
                     dataKey="train_loss"
@@ -521,32 +529,38 @@ export default function TrainDetailPage({
                 >
                   <CartesianGrid
                     strokeDasharray="3 3"
-                    stroke="#334155"
-                    strokeOpacity={0.4}
+                    stroke="hsl(var(--border))"
+                    vertical={false}
                   />
                   <XAxis
                     dataKey="epoch"
-                    tick={{ fontSize: 11, fill: '#94a3b8' }}
+                    tick={{ fill: 'currentColor', fontSize: 11 }}
+                    className="text-muted-foreground"
+                    axisLine={{ stroke: 'hsl(var(--border))' }}
+                    tickLine={{ stroke: 'hsl(var(--border))' }}
                     label={{
                       value: 'Epoch',
                       position: 'insideBottomRight',
                       offset: -4,
                       fontSize: 11,
-                      fill: '#94a3b8',
+                      fill: 'currentColor',
                     }}
                   />
                   <YAxis
-                    tick={{ fontSize: 11, fill: '#94a3b8' }}
+                    tick={{ fill: 'currentColor', fontSize: 11 }}
+                    className="text-muted-foreground"
+                    axisLine={{ stroke: 'hsl(var(--border))' }}
+                    tickLine={{ stroke: 'hsl(var(--border))' }}
                     domain={[0, 1]}
                     tickFormatter={(v: number) => `${(v * 100).toFixed(0)}%`}
                   />
                   <Tooltip
                     contentStyle={tooltipStyle}
-                    labelStyle={{ color: '#94a3b8', marginBottom: 4 }}
+                    labelStyle={{ color: 'hsl(var(--muted-foreground))', marginBottom: 4 }}
                     labelFormatter={v => `Epoch ${v}`}
                     formatter={v => [`${((v as number) * 100).toFixed(2)}%`]}
                   />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Legend wrapperStyle={{ fontSize: 12, color: 'hsl(var(--foreground))' }} />
                   <Line
                     type="monotone"
                     dataKey="train_acc"

@@ -648,39 +648,43 @@ export default function DashboardPage() {
                     <CartesianGrid
                       strokeDasharray="3 3"
                       stroke="hsl(var(--border))"
-                      opacity={0.8}
+                      vertical={false}
                     />
                     <XAxis
                       dataKey="time"
                       tick={{
                         fontSize: 10,
-                        fill: 'hsl(var(--foreground))',
-                        opacity: 0.75,
+                        fill: 'currentColor',
                       }}
-                      stroke="hsl(var(--border))"
+                      className="text-muted-foreground"
+                      stroke="currentColor"
                       interval={3}
+                      axisLine={{ stroke: 'currentColor', opacity: 0.2 }}
+                      tickLine={{ stroke: 'currentColor', opacity: 0.2 }}
                     />
                     <YAxis
                       tick={{
                         fontSize: 11,
-                        fill: 'hsl(var(--foreground))',
-                        opacity: 0.75,
+                        fill: 'currentColor',
                       }}
-                      stroke="hsl(var(--border))"
+                      className="text-muted-foreground"
+                      stroke="currentColor"
                       domain={[0, 100]}
+                      axisLine={{ stroke: 'currentColor', opacity: 0.2 }}
+                      tickLine={{ stroke: 'currentColor', opacity: 0.2 }}
                     />
                     <Tooltip
                       contentStyle={{
-                        backgroundColor: '#1e293b',
-                        border: '1px solid #334155',
+                        backgroundColor: 'hsl(var(--popover))',
+                        border: '1px solid hsl(var(--border))',
                         borderRadius: '8px',
                         fontSize: '12px',
-                        color: '#f1f5f9',
-                        boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                        color: 'hsl(var(--popover-foreground))',
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.1)',
                         padding: '8px 12px',
                       }}
-                      labelStyle={{ color: '#94a3b8', marginBottom: '4px' }}
-                      itemStyle={{ color: '#f1f5f9' }}
+                      labelStyle={{ color: 'hsl(var(--muted-foreground))', marginBottom: '4px' }}
+                      itemStyle={{ color: 'hsl(var(--foreground))' }}
                     />
                     <Legend
                       wrapperStyle={{
@@ -738,37 +742,41 @@ export default function DashboardPage() {
                     <CartesianGrid
                       strokeDasharray="3 3"
                       stroke="hsl(var(--border))"
-                      opacity={0.8}
+                      vertical={false}
                     />
                     <XAxis
                       dataKey="date"
                       tick={{
                         fontSize: 11,
-                        fill: 'hsl(var(--foreground))',
-                        opacity: 0.75,
+                        fill: 'currentColor',
                       }}
-                      stroke="hsl(var(--border))"
+                      className="text-muted-foreground"
+                      stroke="currentColor"
+                      axisLine={{ stroke: 'currentColor', opacity: 0.2 }}
+                      tickLine={{ stroke: 'currentColor', opacity: 0.2 }}
                     />
                     <YAxis
                       tick={{
                         fontSize: 11,
-                        fill: 'hsl(var(--foreground))',
-                        opacity: 0.75,
+                        fill: 'currentColor',
                       }}
-                      stroke="hsl(var(--border))"
+                      className="text-muted-foreground"
+                      stroke="currentColor"
+                      axisLine={{ stroke: 'currentColor', opacity: 0.2 }}
+                      tickLine={{ stroke: 'currentColor', opacity: 0.2 }}
                     />
                     <Tooltip
                       contentStyle={{
-                        backgroundColor: '#1e293b',
-                        border: '1px solid #334155',
+                        backgroundColor: 'hsl(var(--popover))',
+                        border: '1px solid hsl(var(--border))',
                         borderRadius: '8px',
                         fontSize: '12px',
-                        color: '#f1f5f9',
-                        boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                        color: 'hsl(var(--popover-foreground))',
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.1)',
                         padding: '8px 12px',
                       }}
-                      labelStyle={{ color: '#94a3b8', marginBottom: '4px' }}
-                      itemStyle={{ color: '#f1f5f9' }}
+                      labelStyle={{ color: 'hsl(var(--muted-foreground))', marginBottom: '4px' }}
+                      itemStyle={{ color: 'hsl(var(--foreground))' }}
                     />
                     <Legend
                       wrapperStyle={{
@@ -1069,35 +1077,39 @@ export default function DashboardPage() {
                         domain={[0, 100]}
                         tick={{
                           fontSize: 11,
-                          fill: 'hsl(var(--foreground))',
-                          opacity: 0.75,
+                          fill: 'currentColor',
                         }}
-                        stroke="hsl(var(--border))"
+                        className="text-muted-foreground"
+                        stroke="currentColor"
                         tickFormatter={v => `${v}%`}
+                        axisLine={{ stroke: 'currentColor', opacity: 0.2 }}
+                        tickLine={{ stroke: 'currentColor', opacity: 0.2 }}
                       />
                       <YAxis
                         type="category"
                         dataKey="node"
                         tick={{
                           fontSize: 11,
-                          fill: 'hsl(var(--foreground))',
-                          opacity: 0.75,
+                          fill: 'currentColor',
                         }}
-                        stroke="hsl(var(--border))"
+                        className="text-muted-foreground"
+                        stroke="currentColor"
                         width={88}
+                        axisLine={{ stroke: 'currentColor', opacity: 0.2 }}
+                        tickLine={{ stroke: 'currentColor', opacity: 0.2 }}
                       />
                       <Tooltip
                         contentStyle={{
-                          backgroundColor: '#1e293b',
-                          border: '1px solid #334155',
+                          backgroundColor: 'hsl(var(--popover))',
+                          border: '1px solid hsl(var(--border))',
                           borderRadius: '8px',
                           fontSize: '12px',
-                          color: '#f1f5f9',
-                          boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                          color: 'hsl(var(--popover-foreground))',
+                          boxShadow: '0 8px 24px rgba(0,0,0,0.1)',
                           padding: '8px 12px',
                         }}
-                        labelStyle={{ color: '#94a3b8', marginBottom: '4px' }}
-                        itemStyle={{ color: '#f1f5f9' }}
+                        labelStyle={{ color: 'hsl(var(--muted-foreground))', marginBottom: '4px' }}
+                        itemStyle={{ color: 'hsl(var(--foreground))' }}
                         formatter={(value, name) => [
                           `${value}%`,
                           name === 'used' ? '사용 중' : '여유',
