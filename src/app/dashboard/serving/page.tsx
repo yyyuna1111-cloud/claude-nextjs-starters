@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import Link from 'next/link'
 import {
   Server,
@@ -11,7 +11,12 @@ import {
   Clock,
   RefreshCw,
   Layers,
-  ExternalLink
+  ExternalLink,
+  AlertTriangle,
+  Search,
+  Filter,
+  ArrowUpDown,
+  Copy
 } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
@@ -32,8 +37,15 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
-// 1. Argo CD 리소스 상세 정보 인터페이스 추가 (전달주신 스키마 기반)
 interface ArgoResource {
   group?: string
   kind: string
@@ -48,7 +60,7 @@ interface ISVC {
   status: 'Ready' | 'NotReady'
   node: string
   createdAt: string
-  appName?: string // 매핑된 Argo App 이름
+  labels?: Record<string, string>
 }
 
 interface ArgoApp {
@@ -72,105 +84,88 @@ interface ArgoApp {
     health: {
       status: 'Healthy' | 'Progressing' | 'Degraded' | 'Missing' | 'Unknown'
     }
-    // 2. 전달주신 스키마의 핵심 필드: 이 앱이 관리하는 하위 리소스들
     resources?: ArgoResource[] 
   }
 }
 
+interface MergedService {
+  name: string
+  namespace: string
+  argoAppName: string | null
+  syncStatus: 'Synced' | 'OutOfSync' | 'Unknown' | 'Manual'
+  healthStatus: 'Healthy' | 'Progressing' | 'Degraded' | 'Missing' | 'Unknown' | 'N/A'
+  isvcStatus: 'Ready' | 'NotReady' | 'N/A'
+  url: string
+  node: string
+  createdAt: string
+  repoURL?: string
+  targetRevision?: string
+}
+
 export default function ServingPage() {
-  const [isvcs, setIsvcs] = useState<ISVC[]>([])
-  const [argoApps, setArgoApps] = useState<ArgoApp[]>([])
+  const [services, setServices] = useState<MergedService[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  // 검색 및 필터 상태
+  const [search, setSearch] = useState('')
+  const [managedFilter, setManagedFilter] = useState<string>('all')
+  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [sortConfig, setSortConfig] = useState<{ key: keyof MergedService; direction: 'asc' | 'desc' }>({
+    key: 'createdAt',
+    direction: 'desc', // 최신순 기본
+  })
 
   const fetchResources = async () => {
     setLoading(true)
     setError(null)
     try {
-      // 3. 실제 환경에서는 API 응답을 가공하여 매핑합니다.
-      const res = await fetch('/api/k8s/resources')
-      const data = await res.json()
-      
-      // 가상의 Argo CD Apps 데이터 (resources 필드 포함)
+      // 1. 실제 K8s InferenceService 데이터 가져오기
+      const res = await fetch('/api/k8s/isvcs')
+      if (!res.ok) throw new Error('ISVC API Error')
+      const k8sData = await res.json()
+      const rawIsvcs: ISVC[] = k8sData.isvcs || []
+
+      // 2. 임시 Argo CD Apps 데이터
       const mockApps: ArgoApp[] = [
         {
-          metadata: {
-            name: 'bert-serving-app',
-            namespace: 'argocd',
-            uid: 'uid-001',
-            creationTimestamp: '2024-05-10T10:00:00Z',
-          },
-          spec: {
-            project: 'default',
-            source: { repoURL: 'https://github.com/mlops/manifests.git', targetRevision: 'main' },
-          },
-          status: {
-            sync: { status: 'Synced' },
-            health: { status: 'Healthy' },
-            // 이 앱이 'bert-korean-v1' 이라는 InferenceService를 관리함
-            resources: [
-              { kind: 'InferenceService', name: 'bert-korean-v1', namespace: 'mlops' },
-              { kind: 'Service', name: 'bert-korean-v1-predictor-default', namespace: 'mlops' }
-            ]
-          },
+          metadata: { name: 'kie-serving-app', namespace: 'argocd', uid: 'u1', creationTimestamp: '2024-05-10T00:00:00Z' },
+          spec: { project: 'default', source: { repoURL: 'https://git.internal/kie-manifests.git', targetRevision: 'main' } },
+          status: { sync: { status: 'Synced' }, health: { status: 'Healthy' }, resources: [{ kind: 'InferenceService', name: 'kie', namespace: 'serving' }] }
         },
         {
-          metadata: {
-            name: 'sd-xl-deployment',
-            namespace: 'argocd',
-            uid: 'uid-002',
-            creationTimestamp: '2024-05-15T14:30:00Z',
-          },
-          spec: {
-            project: 'ml-serving',
-            source: { repoURL: 'https://github.com/mlops/resnet-api.git', targetRevision: 'v1.2.0' },
-          },
-          status: {
-            sync: { status: 'OutOfSync' },
-            health: { status: 'Progressing' },
-            // 이 앱이 'stable-diffusion-xl' 이라는 InferenceService를 관리함
-            resources: [
-              { kind: 'InferenceService', name: 'stable-diffusion-xl', namespace: 'mlops' }
-            ]
-          },
-        },
-      ]
-
-      // 4. 매핑 로직 시뮬레이션: ISVC 리스트를 순회하며 관리 App을 찾습니다.
-      const rawIsvcs = data.isvcs || [
-        {
-          name: 'bert-korean-v1',
-          namespace: 'mlops',
-          status: 'Ready',
-          node: 'gpu-node-01',
-          createdAt: new Date(Date.now() - 3600000 * 24 * 2).toISOString(),
-        },
-        {
-          name: 'stable-diffusion-xl',
-          namespace: 'mlops',
-          status: 'NotReady',
-          node: 'Pending',
-          createdAt: new Date(Date.now() - 3600000 * 5).toISOString(),
+          metadata: { name: 'sjko-app', namespace: 'argocd', uid: 'u2', creationTimestamp: '2024-05-10T00:00:00Z' },
+          spec: { project: 'default', source: { repoURL: 'https://git.internal/sjko-model.git', targetRevision: 'v1.1' } },
+          status: { sync: { status: 'OutOfSync' }, health: { status: 'Healthy' }, resources: [{ kind: 'InferenceService', name: 'sjko-embedding', namespace: 'serving' }] }
         }
       ]
 
-      const mappedIsvcs = rawIsvcs.map((isvc: ISVC) => {
-        // 이 ISVC를 status.resources에 포함하고 있는 App 찾기
+      const merged = rawIsvcs.map(isvc => {
         const managingApp = mockApps.find(app => 
-          app.status.resources?.some(r => r.kind === 'InferenceService' && r.name === isvc.name)
+          app.status.resources?.some(r => r.kind === 'InferenceService' && r.name === isvc.name) ||
+          isvc.labels?.['app.kubernetes.io/instance'] === app.metadata.name
         )
+
         return {
-          ...isvc,
-          appName: managingApp ? managingApp.metadata.name : 'Unknown'
+          name: isvc.name,
+          namespace: isvc.namespace,
+          argoAppName: managingApp ? managingApp.metadata.name : null,
+          syncStatus: managingApp ? managingApp.status.sync.status : (isvc.namespace === 'serving' ? 'Unknown' : 'Manual'),
+          healthStatus: managingApp ? managingApp.status.health.status : 'N/A',
+          isvcStatus: isvc.status,
+          url: isvc.url || '',
+          node: isvc.node,
+          createdAt: isvc.createdAt,
+          repoURL: managingApp?.spec.source.repoURL,
+          targetRevision: managingApp?.spec.source.targetRevision
         }
       })
 
-      setIsvcs(mappedIsvcs)
-      setArgoApps(mockApps)
-
-    } catch (err: unknown) {
-      console.error('Fetch error:', err)
-      setError('데이터를 불러오는 중 오류가 발생했습니다.')
+      setServices(merged)
+    } catch (err) {
+      console.error('[ServingPage] Fetch Error:', err)
+      setError('클러스터에서 InferenceService 정보를 가져오는데 실패했습니다.')
+      setServices([])
     } finally {
       setLoading(false)
     }
@@ -180,13 +175,53 @@ export default function ServingPage() {
     fetchResources()
   }, [])
 
+  const toggleSort = (key: keyof MergedService) => {
+    setSortConfig(prev => ({
+      key,
+      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc',
+    }))
+  }
+
+  const filteredAndSortedServices = useMemo(() => {
+    let result = [...services]
+
+    if (search) {
+      const lowSearch = search.toLowerCase()
+      result = result.filter(s => 
+        s.name.toLowerCase().includes(lowSearch) || 
+        s.namespace.toLowerCase().includes(lowSearch) ||
+        (s.argoAppName?.toLowerCase().includes(lowSearch))
+      )
+    }
+
+    if (managedFilter !== 'all') {
+      if (managedFilter === 'gitops') result = result.filter(s => s.argoAppName)
+      else if (managedFilter === 'manual') result = result.filter(s => !s.argoAppName)
+    }
+
+    if (statusFilter !== 'all') {
+      result = result.filter(s => s.isvcStatus === statusFilter)
+    }
+
+    result.sort((a: any, b: any) => {
+      let aVal = a[sortConfig.key]
+      let bVal = b[sortConfig.key]
+      if (aVal === null || aVal === undefined) aVal = ''
+      if (bVal === null || bVal === undefined) bVal = ''
+      if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1
+      if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1
+      return 0
+    })
+
+    return result
+  }, [services, search, managedFilter, statusFilter, sortConfig])
+
   const getAge = (createdAt: string) => {
     const created = new Date(createdAt)
     const diff = Date.now() - created.getTime()
     const days = Math.floor(diff / (1000 * 60 * 60 * 24))
     const hours = Math.floor((diff / (1000 * 60 * 60)) % 24)
     const mins = Math.floor((diff / (1000 * 60)) % 60)
-
     if (days > 0) return `${days}d ${hours}h`
     if (hours > 0) return `${hours}h ${mins}m`
     return `${mins}m`
@@ -194,25 +229,19 @@ export default function ServingPage() {
 
   const getSyncBadge = (status: string) => {
     switch (status) {
-      case 'Synced':
-        return <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">Synced</Badge>
-      case 'OutOfSync':
-        return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">OutOfSync</Badge>
-      default:
-        return <Badge variant="outline">{status}</Badge>
+      case 'Synced': return <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]">Synced</Badge>
+      case 'OutOfSync': return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-[10px]">OutOfSync</Badge>
+      case 'Manual': return <Badge variant="outline" className="bg-slate-50 text-slate-500 border-slate-200 text-[10px]">Manual</Badge>
+      default: return <Badge variant="outline" className="text-[10px]">{status}</Badge>
     }
   }
 
   const getHealthBadge = (status: string) => {
     switch (status) {
-      case 'Healthy':
-        return <Badge className="bg-emerald-500 hover:bg-emerald-600 border-transparent text-white">Healthy</Badge>
-      case 'Progressing':
-        return <Badge className="bg-blue-500 hover:bg-blue-600 border-transparent text-white">Progressing</Badge>
-      case 'Degraded':
-        return <Badge variant="destructive">Degraded</Badge>
-      default:
-        return <Badge variant="secondary">{status}</Badge>
+      case 'Healthy': return <div className="flex items-center gap-1.5 text-emerald-500 font-bold text-[10px] uppercase tracking-tighter"><div className="size-1.5 rounded-full bg-emerald-500 animate-pulse" /> Healthy</div>
+      case 'Progressing': return <div className="flex items-center gap-1.5 text-blue-500 font-bold text-[10px] uppercase tracking-tighter"><RefreshCw className="size-3 animate-spin" /> Syncing</div>
+      case 'Degraded': return <div className="flex items-center gap-1.5 text-red-500 font-bold text-[10px] uppercase tracking-tighter"><XCircle className="size-3" /> Degraded</div>
+      default: return <span className="text-muted-foreground text-[10px]">{status}</span>
     }
   }
 
@@ -220,197 +249,162 @@ export default function ServingPage() {
     <div className="space-y-8 pb-10">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Serving & Deployment</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Service Operations</h1>
           <p className="text-muted-foreground text-sm">
-            Argo CD 배포 관리 및 모델 서빙(ISVC) 인스턴스 현황
+            GitOps 배포 주기와 실시간 모델 추론 상태를 통합 관리합니다.
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={fetchResources}
-          disabled={loading}
-        >
-          <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-          새로고침
-        </Button>
       </div>
 
-      {/* 요약 섹션 */}
       <div className="grid gap-4 md:grid-cols-4">
-        <Card className="bg-emerald-50/30 border-emerald-100">
+        <Card className="shadow-sm border-none ring-1 ring-border bg-card">
           <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-emerald-600 uppercase">정상 서빙 중</CardTitle>
-            <div className="text-2xl font-bold">{isvcs.filter(i => i.status === 'Ready').length}</div>
+            <CardTitle className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Total Services</CardTitle>
+            <div className="text-3xl font-bold tracking-tighter">{loading ? '...' : services.length}</div>
           </CardHeader>
         </Card>
-        <Card className="bg-amber-50/30 border-amber-100">
+        <Card className="shadow-sm border-none ring-1 ring-border bg-blue-50/5 text-blue-600">
           <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-amber-600 uppercase">동기화 필요 (Argo)</CardTitle>
-            <div className="text-2xl font-bold">{argoApps.filter(a => a.status.sync.status !== 'Synced').length}</div>
+            <CardTitle className="text-[10px] font-bold uppercase tracking-widest">GitOps Managed</CardTitle>
+            <div className="text-3xl font-bold tracking-tighter">{loading ? '...' : services.filter(s => s.argoAppName).length}</div>
           </CardHeader>
         </Card>
-        <Card className="bg-blue-50/30 border-blue-100">
+        <Card className="shadow-sm border-none ring-1 ring-border bg-emerald-50/5 text-emerald-600">
           <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-blue-600 uppercase">전체 배포 앱</CardTitle>
-            <div className="text-2xl font-bold">{argoApps.length}</div>
+            <CardTitle className="text-[10px] font-bold uppercase tracking-widest">Ready Inference</CardTitle>
+            <div className="text-3xl font-bold tracking-tighter">{loading ? '...' : services.filter(s => s.isvcStatus === 'Ready').length}</div>
           </CardHeader>
         </Card>
-        <Card className="bg-slate-50/30 border-slate-100">
+        <Card className="shadow-sm border-none ring-1 ring-border bg-red-50/5 text-red-600">
           <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-slate-600 uppercase">전체 ISVC</CardTitle>
-            <div className="text-2xl font-bold">{isvcs.length}</div>
+            <CardTitle className="text-[10px] font-bold uppercase tracking-widest">Critical Alerts</CardTitle>
+            <div className="text-3xl font-bold tracking-tighter">{loading ? '...' : services.filter(s => s.syncStatus === 'OutOfSync' || s.isvcStatus === 'NotReady').length}</div>
           </CardHeader>
         </Card>
       </div>
 
-      {/* 1. Argo CD Applications 섹션 */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-2 px-1">
-          <Activity className="size-5 text-blue-600" />
-          <h2 className="text-xl font-semibold">Argo CD Applications</h2>
-        </div>
-        <Card>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="pl-6">Application Name</TableHead>
-                  <TableHead>Project</TableHead>
-                  <TableHead>Sync Status</TableHead>
-                  <TableHead>Health</TableHead>
-                  <TableHead>Repository</TableHead>
-                  <TableHead className="pr-6">Age</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  Array.from({ length: 2 }).map((_, i) => (
-                    <TableRow key={i}>
-                      <TableCell className="pl-6"><Skeleton className="h-5 w-[150px]" /></TableCell>
-                      <TableCell><Skeleton className="h-5 w-[80px]" /></TableCell>
-                      <TableCell><Skeleton className="h-5 w-[100px]" /></TableCell>
-                      <TableCell><Skeleton className="h-5 w-[80px]" /></TableCell>
-                      <TableCell><Skeleton className="h-5 w-[200px]" /></TableCell>
-                      <TableCell className="pr-6"><Skeleton className="h-5 w-[50px]" /></TableCell>
-                    </TableRow>
-                  ))
-                ) : argoApps.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="h-24 text-center">
-                      배포된 애플리케이션이 없습니다.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  argoApps.map(app => (
-                    <TableRow key={app.metadata.uid}>
-                      <TableCell className="pl-6 font-medium">
-                        <div className="flex flex-col">
-                          <span>{app.metadata.name}</span>
-                          <span className="text-muted-foreground text-[10px]">{app.metadata.namespace}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        {app.spec.project}
-                      </TableCell>
-                      <TableCell>
-                        {getSyncBadge(app.status.sync.status)}
-                      </TableCell>
-                      <TableCell>
-                        {getHealthBadge(app.status.health.status)}
-                      </TableCell>
-                      <TableCell className="text-xs font-mono max-w-[200px] truncate">
-                        <div className="flex flex-col">
-                          <span className="truncate" title={app.spec.source.repoURL}>{app.spec.source.repoURL}</span>
-                          <span className="text-muted-foreground">{app.spec.source.targetRevision}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="pr-6 text-muted-foreground text-sm whitespace-nowrap text-right">
-                        {getAge(app.metadata.creationTimestamp)}
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+      <div className="flex flex-col sm:flex-row gap-4 items-end sm:items-center justify-between bg-card p-4 rounded-xl border ring-1 ring-border shadow-sm">
+         <div className="flex flex-1 items-center gap-3 w-full sm:max-w-3xl">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+              <Input 
+                placeholder="Search Service, Namespace or App..." 
+                className="pl-9 h-10 bg-muted/20 border-none ring-1 ring-border focus-visible:ring-primary/50"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+            <Select value={managedFilter} onValueChange={setManagedFilter}>
+              <SelectTrigger className="w-[140px] h-10 bg-muted/20 border-none ring-1 ring-border">
+                <div className="flex items-center gap-2">
+                  <Layers className="size-3.5 text-muted-foreground" />
+                  <SelectValue placeholder="Managed" />
+                </div>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                <SelectItem value="gitops">GitOps</SelectItem>
+                <SelectItem value="manual">Manual</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-[140px] h-10 bg-muted/20 border-none ring-1 ring-border">
+                <div className="flex items-center gap-2">
+                  <Filter className="size-3.5 text-muted-foreground" />
+                  <SelectValue placeholder="Status" />
+                </div>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="Ready">Ready</SelectItem>
+                <SelectItem value="NotReady">Not Ready</SelectItem>
+              </SelectContent>
+            </Select>
+         </div>
+         <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground bg-muted/30 px-3 py-1.5 rounded-full">
+           Showing {filteredAndSortedServices.length} Services
+         </div>
       </div>
 
-      {/* 2. InferenceServices 섹션 */}
       <div className="space-y-4">
-        <div className="flex items-center gap-2 px-1">
-          <Layers className="size-5 text-indigo-600" />
-          <h2 className="text-xl font-semibold">InferenceServices (KServe)</h2>
-        </div>
-        <Card>
+        <Card className="shadow-sm border-none ring-1 ring-border overflow-hidden">
           <CardContent className="p-0">
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead className="pl-6">Service Name</TableHead>
-                  <TableHead>Managed By</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Primary Node</TableHead>
-                  <TableHead className="pr-6 text-right">Age</TableHead>
+                <TableRow className="bg-muted/50 border-none">
+                  <TableHead className="pl-6 font-bold uppercase text-[10px] tracking-widest">
+                    <button onClick={() => toggleSort('name')} className="flex items-center gap-1 hover:text-foreground transition-colors">
+                      Service Information <ArrowUpDown className="size-3" />
+                    </button>
+                  </TableHead>
+                  <TableHead className="font-bold uppercase text-[10px] tracking-widest">Host / Endpoint</TableHead>
+                  <TableHead className="font-bold uppercase text-[10px] tracking-widest text-center">Managed By</TableHead>
+                  <TableHead className="font-bold uppercase text-[10px] tracking-widest text-center">Status Indicators</TableHead>
+                  <TableHead className="font-bold uppercase text-[10px] tracking-widest">
+                    <button onClick={() => toggleSort('isvcStatus')} className="flex items-center gap-1 hover:text-foreground transition-colors">
+                      Inference Ready <ArrowUpDown className="size-3" />
+                    </button>
+                  </TableHead>
+                  <TableHead className="pr-6 text-right font-bold uppercase text-[10px] tracking-widest">
+                    <button onClick={() => toggleSort('createdAt')} className="flex items-center gap-1 ml-auto hover:text-foreground transition-colors">
+                      Uptime <ArrowUpDown className="size-3" />
+                    </button>
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
-                  Array.from({ length: 3 }).map((_, i) => (
-                    <TableRow key={i}>
-                      <TableCell className="pl-6"><Skeleton className="h-5 w-[150px]" /></TableCell>
-                      <TableCell><Skeleton className="h-5 w-[100px]" /></TableCell>
-                      <TableCell><Skeleton className="h-5 w-[80px]" /></TableCell>
-                      <TableCell><Skeleton className="h-5 w-[120px]" /></TableCell>
-                      <TableCell className="pr-6"><Skeleton className="h-5 w-[50px]" /></TableCell>
-                    </TableRow>
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <TableRow key={i}><TableCell colSpan={6} className="pl-6 py-6"><Skeleton className="h-6 w-full" /></TableCell></TableRow>
                   ))
-                ) : isvcs.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="h-24 text-center">
-                      등록된 서비스가 없습니다.
-                    </TableCell>
-                  </TableRow>
+                ) : filteredAndSortedServices.length === 0 ? (
+                  <TableRow><TableCell colSpan={6} className="h-32 text-center text-muted-foreground text-sm font-bold uppercase tracking-widest">No services match filters</TableCell></TableRow>
                 ) : (
-                  isvcs.map(isvc => (
-                    <TableRow key={isvc.name}>
-                      <TableCell className="pl-6 font-medium">
-                        <Link
-                          href={`/dashboard/serving/${isvc.name}?ns=${isvc.namespace}`}
-                          className="flex flex-col hover:underline group"
-                        >
-                          <div className="flex items-center gap-1.5">
-                            <span>{isvc.name}</span>
-                            <span className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity text-[10px]">상세보기 →</span>
-                          </div>
-                          <span className="text-muted-foreground text-[10px]">{isvc.namespace}</span>
+                  filteredAndSortedServices.map(svc => (
+                    <TableRow key={svc.name} className="group hover:bg-muted/30 transition-colors">
+                      <TableCell className="pl-6 py-4">
+                        <Link href={`/dashboard/serving/${svc.name}?ns=${svc.namespace}`} className="flex flex-col">
+                           <span className="font-bold text-sm group-hover:text-primary transition-colors">{svc.name}</span>
+                           <span className="text-[10px] text-muted-foreground font-mono mt-0.5">{svc.namespace.toUpperCase()}</span>
                         </Link>
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-1.5">
-                          <Box className="size-3 text-blue-500" />
-                          <span className="text-xs font-semibold text-blue-600">{isvc.appName}</span>
-                          <ExternalLink className="size-3 text-slate-300" />
-                        </div>
+                        {svc.url ? (
+                          <div className="flex items-center gap-2 max-w-[200px]">
+                            <code className="text-[10px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground truncate" title={svc.url}>
+                              {svc.url.replace(/^https?:\/\//, '')}
+                            </code>
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="size-6 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                              onClick={() => {
+                                navigator.clipboard.writeText(svc.url)
+                              }}
+                            >
+                              <Copy size={12} />
+                            </Button>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground/30 text-[10px]">No Endpoint</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {svc.argoAppName ? (
+                          <div className="flex flex-col items-center gap-1">
+                             <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-[9px] font-bold">GITOPS</Badge>
+                             <span className="text-[10px] text-muted-foreground font-medium">{svc.argoAppName}</span>
+                          </div>
+                        ) : <Badge variant="outline" className="bg-slate-50 text-slate-400 border-slate-200 text-[9px] font-bold">MANUAL</Badge>}
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          variant={isvc.status === 'Ready' ? 'secondary' : 'destructive'}
-                          className={isvc.status === 'Ready' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' : ''}
-                        >
-                          {isvc.status}
-                        </Badge>
+                         <div className="flex flex-col items-center gap-1">{getSyncBadge(svc.syncStatus)}{getHealthBadge(svc.healthStatus)}</div>
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <Server className="h-3.5 w-3.5" />
-                          {isvc.node}
-                        </div>
+                         <Badge variant={svc.isvcStatus === 'Ready' ? 'secondary' : 'destructive'} className={svc.isvcStatus === 'Ready' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20 font-bold text-[10px]' : 'font-bold text-[10px]'}>{svc.isvcStatus}</Badge>
+                         <div className="mt-1 flex items-center gap-1 text-[9px] text-muted-foreground font-medium"><Server size={10} /> {svc.node}</div>
                       </TableCell>
-                      <TableCell className="pr-6 text-muted-foreground text-sm text-right">
-                        {getAge(isvc.createdAt)}
-                      </TableCell>
+                      <TableCell className="pr-6 text-right text-xs font-medium text-muted-foreground">{getAge(svc.createdAt)}</TableCell>
                     </TableRow>
                   ))
                 )}
@@ -419,12 +413,7 @@ export default function ServingPage() {
           </CardContent>
         </Card>
       </div>
-
-      {error && (
-        <div className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-600">
-          {error}
-        </div>
-      )}
+      {error && <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-600 font-bold flex items-center gap-2"><XCircle className="size-4" />{error}</div>}
     </div>
   )
 }
