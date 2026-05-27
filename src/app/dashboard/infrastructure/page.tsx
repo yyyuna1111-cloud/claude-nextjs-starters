@@ -36,8 +36,19 @@ import {
   Filter,
   ChevronLeft,
   ChevronRight,
+  RefreshCw,
 } from 'lucide-react'
 
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from 'recharts'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -129,8 +140,17 @@ interface GpuNode {
 }
 
 // ─────────────────────────────────────────────
-// 헬퍼 함수
+// 풍성한 더미 데이터 (Mock)
 // ─────────────────────────────────────────────
+
+const resourceTrendData = Array.from({ length: 24 }, (_, i) => ({
+  time: `${String(i).padStart(2, '0')}:00`,
+  gpu: Math.round(60 + Math.sin(i * 0.5) * 20 + Math.random() * 10),
+  cpu: Math.round(45 + Math.cos(i * 0.4) * 15 + Math.random() * 8),
+  memory: Math.round(55 + Math.sin(i * 0.3 + 1) * 12 + Math.random() * 6),
+}))
+
+// 서빙 상태 배지 색상 매핑
 
 function getPodStatusBadge(status: string) {
   switch (status) {
@@ -257,6 +277,18 @@ export default function InfrastructurePage() {
   const [gpuLoading, setGpuLoading] = useState(true)
   const [gpuNodes, setGpuNodes] = useState<GpuNode[]>([])
 
+  const [trendLoading, setTrendLoading] = useState(true)
+  const [trendData, setTrendData] = useState<{ 
+    cpu: { data: any[], nodes: string[] }, 
+    memory: { data: any[], nodes: string[] }, 
+    gpu: { data: any[], nodes: string[] } 
+  }>({
+    cpu: { data: [], nodes: [] },
+    memory: { data: [], nodes: [] },
+    gpu: { data: [], nodes: [] }
+  })
+  const [selectedMetricType, setSelectedMetricType] = useState<'cpu' | 'memory' | 'gpu'>('cpu')
+
   // 정렬 및 필터링 상태
   const [podSearch, setPodSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
@@ -265,6 +297,15 @@ export default function InfrastructurePage() {
     key: 'name',
     direction: 'asc',
   })
+
+  // 노드 필터 및 정렬 상태
+  const [nodeStatusFilter, setNodeStatusFilter] = useState<string>('all')
+  const [nodeRoleFilter, setNodeRoleFilter] = useState<string>('all')
+  const [nodeSortConfig, setNodeSortConfig] = useState<{ key: keyof NodeRow; direction: 'asc' | 'desc' }>({
+    key: 'name',
+    direction: 'asc',
+  })
+
   const [currentPage, setCurrentPage] = useState(1)
   const ITEMS_PER_PAGE = 10
   const [activeTab, setActiveTab] = useState('pod')
@@ -272,7 +313,7 @@ export default function InfrastructurePage() {
   // 필터 변경 시 페이지 초기화
   useEffect(() => {
     setCurrentPage(1)
-  }, [podSearch, statusFilter, nodeFilter])
+  }, [podSearch, statusFilter, nodeFilter, nodeStatusFilter, nodeRoleFilter])
 
   const fetchNodes = async () => {
     setNodesLoading(true)
@@ -333,10 +374,30 @@ export default function InfrastructurePage() {
     }
   }
 
+  const fetchTrend = async () => {
+    setTrendLoading(true)
+    try {
+      const res = await fetch('/api/k8s/resources/trend')
+      if (!res.ok) throw new Error('API Error')
+      const json = await res.json()
+      setTrendData(json)
+    } catch (err) {
+      console.error('[Infrastructure] Fetch Trend Error:', err)
+      setTrendData({ 
+        cpu: { data: [], nodes: [] }, 
+        memory: { data: [], nodes: [] }, 
+        gpu: { data: [], nodes: [] } 
+      })
+    } finally {
+      setTrendLoading(false)
+    }
+  }
+
   useEffect(() => {
     fetchNodes()
     fetchPods()
     fetchGpus()
+    fetchTrend()
   }, [])
 
   // Pod 필터링 및 정렬 로직
@@ -389,6 +450,45 @@ export default function InfrastructurePage() {
       direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc',
     }))
   }
+
+  const toggleNodeSort = (key: keyof NodeRow) => {
+    setNodeSortConfig(prev => ({
+      key,
+      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc',
+    }))
+  }
+
+  // Node 필터링 및 정렬 로직
+  const filteredAndSortedNodes = React.useMemo(() => {
+    if (!nodesSummary?.nodes) return []
+
+    let result = [...nodesSummary.nodes]
+
+    // 1. 상태 필터
+    if (nodeStatusFilter !== 'all') {
+      result = result.filter(n => n.status === nodeStatusFilter)
+    }
+
+    // 2. 역할 필터
+    if (nodeRoleFilter !== 'all') {
+      result = result.filter(n => n.role === nodeRoleFilter)
+    }
+
+    // 3. 정렬
+    result.sort((a: any, b: any) => {
+      let aVal = a[nodeSortConfig.key]
+      let bVal = b[nodeSortConfig.key]
+
+      if (aVal === undefined) aVal = 0
+      if (bVal === undefined) bVal = 0
+
+      if (aVal < bVal) return nodeSortConfig.direction === 'asc' ? -1 : 1
+      if (aVal > bVal) return nodeSortConfig.direction === 'asc' ? 1 : -1
+      return 0
+    })
+
+    return result
+  }, [nodesSummary?.nodes, nodeStatusFilter, nodeRoleFilter, nodeSortConfig])
 
   // GPU 슬롯 기반 상태 계산 (MIG + Tier 대응)
   const standardInstances = gpuNodes
@@ -526,7 +626,103 @@ export default function InfrastructurePage() {
           <TabsTrigger value="pod" className="gap-1.5 py-2 px-6 font-bold text-[11px] uppercase tracking-widest data-[state=active]:bg-background data-[state=active]:shadow-md rounded-lg"><Box className="size-3.5" />Pod</TabsTrigger>
           <TabsTrigger value="node" className="gap-1.5 py-2 px-6 font-bold text-[11px] uppercase tracking-widest data-[state=active]:bg-background data-[state=active]:shadow-md rounded-lg"><Server className="size-3.5" />Node</TabsTrigger>
           <TabsTrigger value="gpu" className="gap-1.5 py-2 px-6 font-bold text-[11px] uppercase tracking-widest data-[state=active]:bg-background data-[state=active]:shadow-md rounded-lg"><Cpu className="size-3.5" />GPU</TabsTrigger>
+          <TabsTrigger value="metric" className="gap-1.5 py-2 px-6 font-bold text-[11px] uppercase tracking-widest data-[state=active]:bg-background data-[state=active]:shadow-md rounded-lg"><Activity className="size-3.5" />Metric</TabsTrigger>
         </TabsList>
+
+        {/* Metric 탭 */}
+        <TabsContent value="metric" className="space-y-4">
+          <div className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-card p-4 rounded-xl border ring-1 ring-border shadow-sm">
+             <div className="flex items-center gap-2">
+                <div className="p-2 bg-primary/10 rounded-lg text-primary"><Activity size={16} /></div>
+                <div>
+                   <h3 className="text-xs font-bold uppercase tracking-widest">Resource Usage Trend</h3>
+                   <p className="text-[10px] text-muted-foreground font-medium">Historical data by individual node</p>
+                </div>
+             </div>
+             <div className="flex bg-muted/40 p-1 rounded-lg ring-1 ring-border">
+                {(['cpu', 'memory', 'gpu'] as const).map(t => (
+                   <button 
+                     key={t}
+                     onClick={() => setSelectedMetricType(t)}
+                     className={`px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all ${selectedMetricType === t ? 'bg-background text-primary shadow-sm ring-1 ring-border' : 'text-muted-foreground hover:text-foreground'}`}
+                   >
+                     {t}
+                   </button>
+                ))}
+             </div>
+          </div>
+
+          <Card className="shadow-sm border-none ring-1 ring-border overflow-hidden bg-card/50 backdrop-blur-sm">
+            <CardContent className="pt-8 pb-4">
+              {trendLoading ? (
+                <div className="h-[400px] flex flex-col gap-4 items-center justify-center">
+                   <RefreshCw className="size-8 text-primary/40 animate-spin" />
+                   <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Analyzing Prometheus Data...</span>
+                </div>
+              ) : (!trendData || !trendData[selectedMetricType] || !trendData[selectedMetricType].data || trendData[selectedMetricType].data.length === 0) ? (
+                <div className="h-[400px] flex items-center justify-center text-muted-foreground text-sm font-bold uppercase tracking-widest border-2 border-dashed rounded-xl">No Metric Data Available</div>
+              ) : (
+                <ResponsiveContainer width="100%" height={400}>
+                  <LineChart
+                    data={trendData[selectedMetricType].data}
+                    margin={{ top: 0, right: 30, left: -10, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                    <XAxis
+                      dataKey="time"
+                      tick={{ fontSize: 10, fill: 'currentColor' }}
+                      className="text-muted-foreground"
+                      stroke="currentColor"
+                      interval={2}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      tick={{ fontSize: 11, fill: 'currentColor' }}
+                      className="text-muted-foreground"
+                      stroke="currentColor"
+                      domain={[0, 100]}
+                      axisLine={false}
+                      tickLine={false}
+                      tickFormatter={(v) => `${v}%`}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: 'hsl(var(--popover))',
+                        border: '1px solid hsl(var(--border))',
+                        borderRadius: '12px',
+                        fontSize: '11px',
+                        color: 'hsl(var(--popover-foreground))',
+                        boxShadow: '0 10px 30px rgba(0,0,0,0.1)',
+                        padding: '12px',
+                      }}
+                      labelStyle={{ fontWeight: 'bold', color: 'hsl(var(--muted-foreground))', marginBottom: '8px', borderBottom: '1px solid hsl(var(--border))', paddingBottom: '4px' }}
+                    />
+                    <Legend
+                      wrapperStyle={{ fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase', paddingTop: '30px' }}
+                    />
+                    {(trendData[selectedMetricType].nodes || []).map((node, i) => {
+                      const colors = ['#8b5cf6', '#10b881', '#3b82f6', '#f59e0b', '#ec4899', '#06b6d4', '#f97316', '#84cc16']
+                      return (
+                        <Line 
+                          key={node} 
+                          type="monotone" 
+                          dataKey={node} 
+                          stroke={colors[i % colors.length]} 
+                          strokeWidth={2} 
+                          dot={{ r: 2, fill: colors[i % colors.length], strokeWidth: 0 }} 
+                          activeDot={{ r: 4, strokeWidth: 0 }}
+                          name={node.toUpperCase()}
+                          connectNulls
+                        />
+                      )
+                    })}
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         {/* Pod 탭 */}
         <TabsContent value="pod" className="space-y-4">
@@ -681,16 +877,77 @@ export default function InfrastructurePage() {
         </TabsContent>
 
         {/* Node 탭 */}
-        <TabsContent value="node">
+        <TabsContent value="node" className="space-y-4">
+          <div className="flex flex-col sm:flex-row gap-4 items-end sm:items-center justify-between bg-card p-4 rounded-xl border ring-1 ring-border shadow-sm">
+             <div className="flex flex-1 items-center gap-3 w-full sm:max-w-2xl">
+                <Select value={nodeStatusFilter} onValueChange={setNodeStatusFilter}>
+                  <SelectTrigger className="w-[160px] h-10 bg-muted/20 border-none ring-1 ring-border">
+                    <div className="flex items-center gap-2">
+                      <Filter className="size-3.5 text-muted-foreground" />
+                      <SelectValue placeholder="Status" />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Statuses</SelectItem>
+                    <SelectItem value="Ready">Ready</SelectItem>
+                    <SelectItem value="NotReady">Not Ready</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Select value={nodeRoleFilter} onValueChange={setNodeRoleFilter}>
+                  <SelectTrigger className="w-[160px] h-10 bg-muted/20 border-none ring-1 ring-border">
+                    <div className="flex items-center gap-2">
+                      <Layers className="size-3.5 text-muted-foreground" />
+                      <SelectValue placeholder="Role" />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Roles</SelectItem>
+                    <SelectItem value="control-plane">Control Plane</SelectItem>
+                    <SelectItem value="worker">Worker</SelectItem>
+                    <SelectItem value="gpu-worker">GPU Worker</SelectItem>
+                  </SelectContent>
+                </Select>
+             </div>
+             <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground bg-muted/30 px-3 py-1.5 rounded-full">
+               Showing {filteredAndSortedNodes.length} Nodes
+             </div>
+          </div>
+
           <div className="rounded-xl border bg-card shadow-sm overflow-hidden ring-1 ring-border border-none">
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/50 hover:bg-muted/50 border-none border-b ring-1 ring-border">
-                  <TableHead className="pl-6 font-bold uppercase text-[10px] tracking-widest text-muted-foreground/70">Host Identifier</TableHead>
-                  <TableHead className="font-bold uppercase text-[10px] tracking-widest text-muted-foreground/70">Status</TableHead>
-                  <TableHead className="font-bold uppercase text-[10px] tracking-widest text-muted-foreground/70">Role</TableHead>
-                  <TableHead className="w-72 font-bold uppercase text-[10px] tracking-widest text-muted-foreground/70">Utilization</TableHead>
-                  <TableHead className="font-bold uppercase text-[10px] tracking-widest text-center text-muted-foreground/70">Pods</TableHead>
+                  <TableHead className="pl-6 font-bold uppercase text-[10px] tracking-widest text-muted-foreground/70">
+                    <button onClick={() => toggleNodeSort('name')} className="flex items-center gap-1 hover:text-foreground transition-colors">
+                      Host Identifier <ArrowUpDown className="size-3" />
+                    </button>
+                  </TableHead>
+                  <TableHead className="font-bold uppercase text-[10px] tracking-widest text-muted-foreground/70">
+                    <button onClick={() => toggleNodeSort('status')} className="flex items-center gap-1 hover:text-foreground transition-colors">
+                      Status <ArrowUpDown className="size-3" />
+                    </button>
+                  </TableHead>
+                  <TableHead className="font-bold uppercase text-[10px] tracking-widest text-muted-foreground/70">
+                    <button onClick={() => toggleNodeSort('role')} className="flex items-center gap-1 hover:text-foreground transition-colors">
+                      Role <ArrowUpDown className="size-3" />
+                    </button>
+                  </TableHead>
+                  <TableHead className="w-72 font-bold uppercase text-[10px] tracking-widest text-muted-foreground/70">
+                    <div className="flex items-center gap-4">
+                      <span>Utilization</span>
+                      <div className="flex gap-2">
+                        <button onClick={() => toggleNodeSort('cpuUsage')} className="text-[8px] hover:text-primary transition-colors flex items-center gap-0.5">CPU <ArrowUpDown className="size-2" /></button>
+                        <button onClick={() => toggleNodeSort('memoryUsage')} className="text-[8px] hover:text-primary transition-colors flex items-center gap-0.5">MEM <ArrowUpDown className="size-2" /></button>
+                        <button onClick={() => toggleNodeSort('gpuUsage' as any)} className="text-[8px] hover:text-primary transition-colors flex items-center gap-0.5">GPU <ArrowUpDown className="size-2" /></button>
+                      </div>
+                    </div>
+                  </TableHead>
+                  <TableHead className="font-bold uppercase text-[10px] tracking-widest text-center text-muted-foreground/70">
+                    <button onClick={() => toggleNodeSort('podCount')} className="flex items-center gap-1 mx-auto hover:text-foreground transition-colors">
+                      Pods <ArrowUpDown className="size-3" />
+                    </button>
+                  </TableHead>
                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
@@ -699,7 +956,9 @@ export default function InfrastructurePage() {
                   Array.from({ length: 5 }).map((_, i) => (
                     <TableRow key={i}><TableCell colSpan={6} className="pl-6 py-4"><Skeleton className="h-6 w-full" /></TableCell></TableRow>
                   ))
-                ) : (nodesSummary?.nodes || []).map(node => (
+                ) : filteredAndSortedNodes.length === 0 ? (
+                  <TableRow><TableCell colSpan={6} className="text-center py-20 text-muted-foreground text-sm font-bold uppercase tracking-widest">No Nodes Match Filters</TableCell></TableRow>
+                ) : filteredAndSortedNodes.map(node => (
                   <TableRow key={node.name} className="hover:bg-primary/[0.02] border-b last:border-0 group transition-colors">
                     <TableCell className="pl-6 font-mono text-xs tracking-tighter text-foreground">
                       <button 
@@ -715,14 +974,16 @@ export default function InfrastructurePage() {
                     <TableCell>{getNodeStatusBadge(node.status)}</TableCell>
                     <TableCell>{getNodeRoleBadge(node.role)}</TableCell>
                     <TableCell>
-                      <div className="space-y-2 py-3 px-1">
-                        <div className="flex justify-between text-[9px] uppercase font-bold text-muted-foreground/90 tabular-nums tracking-widest">
-                          <span className="flex items-center gap-1.5"><div className="size-1 rounded-full bg-emerald-500" /> CPU {node.cpuUsage}%</span>
-                          <span className="flex items-center gap-1.5"><div className="size-1 rounded-full bg-blue-500" /> MEM {node.memoryUsage}%</span>
+                      <div className="space-y-1.5 py-2 px-1">
+                        <div className="flex justify-between text-[8px] uppercase font-bold text-muted-foreground/70 tabular-nums tracking-tighter">
+                          <span className="flex items-center gap-1"><div className="size-1 rounded-full bg-emerald-500" /> CPU {node.cpuUsage}%</span>
+                          <span className="flex items-center gap-1"><div className="size-1 rounded-full bg-blue-500" /> MEM {node.memoryUsage}%</span>
+                          {node.role === 'gpu-worker' && <span className="flex items-center gap-1"><div className="size-1 rounded-full bg-violet-500" /> GPU {node.gpuUsage || 0}%</span>}
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex gap-1.5">
                            <Progress value={node.cpuUsage} className={`h-1.5 flex-1 shadow-inner rounded-full ${getCpuProgressClass(node.cpuUsage)}`} />
                            <Progress value={node.memoryUsage} className={`h-1.5 flex-1 shadow-inner rounded-full ${getMemProgressClass(node.memoryUsage)}`} />
+                           {node.role === 'gpu-worker' && <Progress value={node.gpuUsage || 0} className={`h-1.5 flex-1 shadow-inner rounded-full ${getGpuProgressClass(node.gpuUsage || 0)}`} />}
                         </div>
                       </div>
                     </TableCell>

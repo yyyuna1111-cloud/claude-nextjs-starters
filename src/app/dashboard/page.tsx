@@ -3,7 +3,7 @@
 // MLOps 대시보드 Overview 페이지
 // Recharts를 사용하므로 클라이언트 컴포넌트로 선언
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import {
   Activity,
@@ -44,6 +44,7 @@ import {
 } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
+import { Skeleton } from '@/components/ui/skeleton'
 
 // ─────────────────────────────────────────────
 // 더미 데이터 정의
@@ -51,14 +52,6 @@ import { Separator } from '@/components/ui/separator'
 
 // 상단 요약 카드 - 카운터 타입 (숫자)
 const counterCards = [
-  {
-    href: '/dashboard/serving',
-    label: '운영 중 서비스',
-    value: 4,
-    colorClass: 'text-emerald-400',
-    bgClass: 'bg-emerald-400/10',
-    icon: CheckCircle2,
-  },
   {
     href: '/dashboard/train?status=Failed',
     label: '실패 Pipeline',
@@ -76,7 +69,7 @@ const counterCards = [
     icon: Server,
   },
   {
-    href: '/dashboard/evaluate',
+    href: '/dashboard/serving',
     label: '등록된 모델',
     value: 12,
     colorClass: 'text-violet-400',
@@ -86,32 +79,7 @@ const counterCards = [
 ]
 
 // 상단 요약 카드 - 사용률 타입 (진행바)
-const usageCards = [
-  {
-    href: '/dashboard/resources',
-    label: 'GPU 사용률',
-    value: 76,
-    colorClass: 'text-purple-500',
-    barColorClass: '[&>div>div]:bg-purple-500',
-    icon: Zap,
-  },
-  {
-    href: '/dashboard/resources',
-    label: 'Memory 사용률',
-    value: 61,
-    colorClass: 'text-blue-500',
-    barColorClass: '[&>div>div]:bg-blue-500',
-    icon: MemoryStick,
-  },
-  {
-    href: '/dashboard/resources',
-    label: 'Storage 사용률',
-    value: 84,
-    colorClass: 'text-amber-500',
-    barColorClass: '[&>div>div]:bg-amber-500',
-    icon: HardDrive,
-  },
-]
+// usageCards는 이제 DashboardPage 내부에서 동적으로 생성됩니다.
 
 // 파이프라인 상태 트렌드 - 7일간 stacked bar
 // 리소스 사용률 트렌드 - 24시간 multi-line
@@ -121,66 +89,6 @@ const resourceTrendData = Array.from({ length: 24 }, (_, i) => ({
   cpu: Math.round(45 + Math.cos(i * 0.4) * 15 + Math.random() * 8),
   memory: Math.round(55 + Math.sin(i * 0.3 + 1) * 12 + Math.random() * 6),
 }))
-
-// 장애 및 알림 트렌드 - 7일간 stacked bar
-const failureAlertData = [
-  {
-    date: '05/09',
-    trainFail: 1,
-    evalFail: 0,
-    deployFail: 1,
-    servingFail: 0,
-    infraFail: 1,
-  },
-  {
-    date: '05/10',
-    trainFail: 2,
-    evalFail: 1,
-    deployFail: 0,
-    servingFail: 1,
-    infraFail: 0,
-  },
-  {
-    date: '05/11',
-    trainFail: 0,
-    evalFail: 2,
-    deployFail: 1,
-    servingFail: 0,
-    infraFail: 1,
-  },
-  {
-    date: '05/12',
-    trainFail: 3,
-    evalFail: 1,
-    deployFail: 2,
-    servingFail: 1,
-    infraFail: 0,
-  },
-  {
-    date: '05/13',
-    trainFail: 1,
-    evalFail: 0,
-    deployFail: 0,
-    servingFail: 2,
-    infraFail: 1,
-  },
-  {
-    date: '05/14',
-    trainFail: 2,
-    evalFail: 1,
-    deployFail: 1,
-    servingFail: 0,
-    infraFail: 2,
-  },
-  {
-    date: '05/15',
-    trainFail: 1,
-    evalFail: 2,
-    deployFail: 0,
-    servingFail: 1,
-    infraFail: 0,
-  },
-]
 
 // 노드별 메모리 사용률 (GPU 노드 vs CPU 노드 구분)
 const nodeMemoryData = [
@@ -536,6 +444,142 @@ function ActivityStatusBadge({ status }: { status: ActivityStatus }) {
 
 export default function DashboardPage() {
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>('all')
+  const [metrics, setMetrics] = useState({
+    cpu: 0,
+    memory: 0,
+    gpu: 0,
+    unhealthyPods: 0,
+    highMemoryNodes: [] as { node: string; used: number; free: number; type: string }[],
+    unhealthyNamespaces: [] as { ns: string; running: number; pending: number; failed: number; crash: number; labels: string[] }[],
+    loading: true
+  })
+
+  const fetchMetrics = async () => {
+    try {
+      const [nodeRes, gpuRes, podRes] = await Promise.all([
+        fetch('/api/k8s/nodes'),
+        fetch('/api/k8s/gpu'),
+        fetch('/api/k8s/pods')
+      ])
+
+      const nodeData = await nodeRes.json()
+      const gpuData = await gpuRes.json()
+      const podData = await podRes.json()
+
+      // CPU/Memory 평균 및 고부하 노드 계산
+      const nodes = nodeData.nodes || []
+      const avgCpu = nodes.length > 0 ? Math.round(nodes.reduce((s: number, n: any) => s + n.cpuUsage, 0) / nodes.length) : 0
+      const avgMem = nodes.length > 0 ? Math.round(nodes.reduce((s: number, n: any) => s + n.memoryUsage, 0) / nodes.length) : 0
+
+      // 메모리 90% 이상 노드 필터링
+      const highMemNodes = nodes
+        .filter((n: any) => n.memoryUsage >= 90)
+        .map((n: any) => ({
+          node: n.name.split('-').slice(-2).join('-'), // 이름 간소화
+          used: n.memoryUsage,
+          free: 100 - n.memoryUsage,
+          type: n.role === 'control-plane' ? 'master' : (n.role === 'gpu-worker' ? 'gpu' : 'worker')
+        }))
+
+      // GPU 할당율 계산
+      const allInstances = (gpuData.gpuNodes || []).flatMap((n: any) => n.devices.flatMap((d: any) => d.instances || []))
+      const totalSlots = allInstances.length
+      const activeSlots = allInstances.filter((inst: any) => inst.utilization > 5).length
+      const gpuAllocated = totalSlots > 0 ? Math.round((activeSlots / totalSlots) * 100) : 0
+
+      // 비정상 Pod 계산 및 네임스페이스별 집계
+      const pods = podData.pods || []
+      const unhealthyCount = (podData.failedCount || 0) + (podData.crashLoopCount || 0) + (podData.pendingCount || 0)
+
+      const nsMap = new Map<string, any>()
+      pods.forEach((p: any) => {
+        if (!nsMap.has(p.namespace)) {
+          nsMap.set(p.namespace, { ns: p.namespace, running: 0, pending: 0, failed: 0, crash: 0, labels: [] })
+        }
+        const nsData = nsMap.get(p.namespace)
+        if (p.status === 'Running') nsData.running++
+        else if (p.status === 'Pending') nsData.pending++
+        else if (p.status === 'Failed') nsData.failed++
+        else if (p.status === 'CrashLoopBackOff') nsData.crash++
+      })
+
+      // 비정상 Pod이 있는 네임스페이스만 필터링
+      const unhealthyNamespaces = Array.from(nsMap.values())
+        .filter(n => n.pending > 0 || n.failed > 0 || n.crash > 0)
+        .sort((a, b) => (b.pending + b.failed + b.crash) - (a.pending + a.failed + a.crash))
+
+      setMetrics({
+        cpu: avgCpu,
+        memory: avgMem,
+        gpu: gpuAllocated,
+        unhealthyPods: unhealthyCount,
+        highMemoryNodes: highMemNodes,
+        unhealthyNamespaces: unhealthyNamespaces,
+        loading: false
+      })
+    } catch (err) {
+      console.error('[Dashboard] Fetch Metrics Error:', err)
+      setMetrics(prev => ({ ...prev, loading: false }))
+    }
+  }
+
+  useEffect(() => {
+    fetchMetrics()
+  }, [])
+
+  const dynamicCounterCards = [
+    {
+      href: '/dashboard/train?status=Failed',
+      label: '실패 Pipeline',
+      value: 3,
+      colorClass: 'text-red-400',
+      bgClass: 'bg-red-400/10',
+      icon: XCircle,
+    },
+    {
+      href: '/dashboard/infrastructure',
+      label: '비정상 Pod',
+      value: metrics.unhealthyPods,
+      colorClass: metrics.unhealthyPods > 0 ? 'text-red-400' : 'text-emerald-400',
+      bgClass: metrics.unhealthyPods > 0 ? 'bg-red-400/10' : 'bg-emerald-400/10',
+      icon: metrics.unhealthyPods > 0 ? AlertTriangle : Server,
+    },
+    {
+      href: '/dashboard/serving',
+      label: '등록된 모델',
+      value: 12,
+      colorClass: 'text-violet-400',
+      bgClass: 'bg-violet-400/10',
+      icon: Box,
+    },
+  ]
+
+  const usageCards = [
+    {
+      href: '/dashboard/infrastructure',
+      label: 'GPU 할당율',
+      value: metrics.gpu,
+      colorClass: 'text-purple-500',
+      barColorClass: '[&>div>div]:bg-purple-500',
+      icon: Zap,
+    },
+    {
+      href: '/dashboard/infrastructure',
+      label: 'CPU 사용률 (평균)',
+      value: metrics.cpu,
+      colorClass: 'text-emerald-500',
+      barColorClass: '[&>div>div]:bg-emerald-500',
+      icon: Activity,
+    },
+    {
+      href: '/dashboard/infrastructure',
+      label: 'Memory 사용률 (평균)',
+      value: metrics.memory,
+      colorClass: 'text-blue-500',
+      barColorClass: '[&>div>div]:bg-blue-500',
+      icon: MemoryStick,
+    },
+  ]
 
   const filteredActivities = (() => {
     const list =
@@ -559,16 +603,11 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      {/* ─── 상단: Summary Cards (8개, 2줄 grid) ─── */}
+      {/* ─── 상단: Summary Cards ─── */}
       <section aria-label="요약 카드">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {/* 카운터 카드 4개 */}
-          {[
-            counterCards[0],
-            counterCards[1],
-            counterCards[2],
-            counterCards[3],
-          ].map(card => {
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {/* 카운터 카드 3개 */}
+          {dynamicCounterCards.map(card => {
             const Icon = card.icon
             return (
               <Link key={card.label} href={card.href} className="group">
@@ -610,210 +649,22 @@ export default function DashboardPage() {
                         </p>
                       </div>
                       <p className={`text-sm font-bold ${card.colorClass}`}>
-                        {card.value}%
+                        {metrics.loading ? '...' : `${card.value}%`}
                       </p>
                     </div>
-                    <Progress
-                      value={card.value}
-                      className={`mt-2 h-1.5 ${card.barColorClass}`}
-                    />
+                    {metrics.loading ? (
+                      <Skeleton className="mt-2 h-1.5 w-full" />
+                    ) : (
+                      <Progress
+                        value={card.value}
+                        className={`mt-2 h-1.5 ${card.barColorClass}`}
+                      />
+                    )}
                   </CardContent>
                 </Card>
               </Link>
             )
           })}
-        </div>
-      </section>
-
-      {/* ─── 중단: 핵심 그래프 ─── */}
-      <section aria-label="핵심 그래프">
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {/* 1. Resource Usage Trend */}
-          <Link href="/dashboard/resources" className="group lg:order-2">
-            <Card className="h-full transition-shadow group-hover:shadow-md">
-              <CardHeader className="pb-0">
-                <CardTitle className="text-sm font-semibold">
-                  리소스 사용률 추이
-                </CardTitle>
-                <CardDescription className="text-xs">
-                  최근 24시간 GPU / CPU / Memory 사용률 (%)
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="pt-4">
-                <ResponsiveContainer width="100%" height={220}>
-                  <LineChart
-                    data={resourceTrendData}
-                    margin={{ top: 0, right: 8, left: -20, bottom: 0 }}
-                  >
-                    <CartesianGrid
-                      strokeDasharray="3 3"
-                      stroke="hsl(var(--border))"
-                      vertical={false}
-                    />
-                    <XAxis
-                      dataKey="time"
-                      tick={{
-                        fontSize: 10,
-                        fill: 'currentColor',
-                      }}
-                      className="text-muted-foreground"
-                      stroke="currentColor"
-                      interval={3}
-                      axisLine={{ stroke: 'currentColor', opacity: 0.2 }}
-                      tickLine={{ stroke: 'currentColor', opacity: 0.2 }}
-                    />
-                    <YAxis
-                      tick={{
-                        fontSize: 11,
-                        fill: 'currentColor',
-                      }}
-                      className="text-muted-foreground"
-                      stroke="currentColor"
-                      domain={[0, 100]}
-                      axisLine={{ stroke: 'currentColor', opacity: 0.2 }}
-                      tickLine={{ stroke: 'currentColor', opacity: 0.2 }}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: 'hsl(var(--popover))',
-                        border: '1px solid hsl(var(--border))',
-                        borderRadius: '8px',
-                        fontSize: '12px',
-                        color: 'hsl(var(--popover-foreground))',
-                        boxShadow: '0 8px 24px rgba(0,0,0,0.1)',
-                        padding: '8px 12px',
-                      }}
-                      labelStyle={{ color: 'hsl(var(--muted-foreground))', marginBottom: '4px' }}
-                      itemStyle={{ color: 'hsl(var(--foreground))' }}
-                    />
-                    <Legend
-                      wrapperStyle={{
-                        fontSize: '11px',
-                        color: 'hsl(var(--foreground))',
-                      }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="gpu"
-                      stroke="#a78bfa"
-                      strokeWidth={2}
-                      dot={false}
-                      name="GPU"
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="cpu"
-                      stroke="#60a5fa"
-                      strokeWidth={2}
-                      dot={false}
-                      name="CPU"
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="memory"
-                      stroke="#4ade80"
-                      strokeWidth={2}
-                      dot={false}
-                      name="Memory"
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          </Link>
-
-          {/* 2. Failure & Alert Trend */}
-          <Link href="/dashboard/alerts" className="group lg:order-1">
-            <Card className="h-full transition-shadow group-hover:shadow-md">
-              <CardHeader className="pb-0">
-                <CardTitle className="text-sm font-semibold">
-                  장애 및 알림 추이
-                </CardTitle>
-                <CardDescription className="text-xs">
-                  최근 7일간 장애 유형별 발생 현황
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="pt-4">
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart
-                    data={failureAlertData}
-                    margin={{ top: 0, right: 8, left: -20, bottom: 0 }}
-                  >
-                    <CartesianGrid
-                      strokeDasharray="3 3"
-                      stroke="hsl(var(--border))"
-                      vertical={false}
-                    />
-                    <XAxis
-                      dataKey="date"
-                      tick={{
-                        fontSize: 11,
-                        fill: 'currentColor',
-                      }}
-                      className="text-muted-foreground"
-                      stroke="currentColor"
-                      axisLine={{ stroke: 'currentColor', opacity: 0.2 }}
-                      tickLine={{ stroke: 'currentColor', opacity: 0.2 }}
-                    />
-                    <YAxis
-                      tick={{
-                        fontSize: 11,
-                        fill: 'currentColor',
-                      }}
-                      className="text-muted-foreground"
-                      stroke="currentColor"
-                      axisLine={{ stroke: 'currentColor', opacity: 0.2 }}
-                      tickLine={{ stroke: 'currentColor', opacity: 0.2 }}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: 'hsl(var(--popover))',
-                        border: '1px solid hsl(var(--border))',
-                        borderRadius: '8px',
-                        fontSize: '12px',
-                        color: 'hsl(var(--popover-foreground))',
-                        boxShadow: '0 8px 24px rgba(0,0,0,0.1)',
-                        padding: '8px 12px',
-                      }}
-                      labelStyle={{ color: 'hsl(var(--muted-foreground))', marginBottom: '4px' }}
-                      itemStyle={{ color: 'hsl(var(--foreground))' }}
-                    />
-                    <Legend
-                      wrapperStyle={{
-                        fontSize: '11px',
-                        color: 'hsl(var(--foreground))',
-                      }}
-                    />
-                    <Bar
-                      dataKey="trainFail"
-                      stackId="a"
-                      fill="#93c5fd"
-                      name="학습 실패"
-                    />
-                    <Bar
-                      dataKey="evalFail"
-                      stackId="a"
-                      fill="#6ee7b7"
-                      name="평가 실패"
-                    />
-                    <Bar
-                      dataKey="deployFail"
-                      stackId="a"
-                      fill="#c4b5fd"
-                      name="배포 실패"
-                    />
-                    <Bar
-                      dataKey="servingFail"
-                      stackId="a"
-                      fill="#fca5a5"
-                      name="서빙 장애"
-                      radius={[4, 4, 0, 0]}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          </Link>
         </div>
       </section>
 
@@ -1033,190 +884,112 @@ export default function DashboardPage() {
             </Card>
           </div>
 
-          {/* ── 오른쪽: 노드별 메모리 + Pod 네임스페이스 + 최근 활동 ── */}
           <div className="flex flex-col gap-4">
-            {/* 노드별 메모리 사용률 */}
+            {/* 노드별 메모리 사용률 (Alert Focus) */}
             <Link href="/dashboard/infrastructure" className="group">
-              <Card className="transition-shadow group-hover:shadow-md">
+              <Card className={`transition-shadow group-hover:shadow-md ${metrics.highMemoryNodes.length > 0 ? 'border-red-500/50 bg-red-500/[0.02]' : ''}`}>
                 <CardHeader className="pb-0">
                   <div className="flex items-center justify-between">
                     <div>
-                      <CardTitle className="text-sm font-semibold">
-                        노드별 메모리 사용률
+                      <CardTitle className={`text-sm font-semibold ${metrics.highMemoryNodes.length > 0 ? 'text-red-500' : ''}`}>
+                        메모리 임계치 초과 노드 (90%+)
                       </CardTitle>
                       <CardDescription className="text-xs">
-                        전체 클러스터 노드 상태 (%)
+                        {metrics.highMemoryNodes.length > 0 ? `현재 ${metrics.highMemoryNodes.length}개의 노드가 위험 상태입니다.` : '모든 노드가 안정 범위 내에 있습니다.'}
                       </CardDescription>
                     </div>
-                    <div className="text-muted-foreground flex items-center gap-3 text-xs">
-                      <span className="flex items-center gap-1">
-                        <span className="inline-block size-2 rounded-full bg-[#60a5fa]" />
-                        Used
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <span className="inline-block size-2 rounded-full bg-[#e2e8f0]" />
-                        Free
-                      </span>
-                    </div>
+                    {metrics.highMemoryNodes.length > 0 && <AlertTriangle className="size-4 text-red-500 animate-pulse" />}
                   </div>
                 </CardHeader>
                 <CardContent className="pt-4">
-                  <ResponsiveContainer width="100%" height={200}>
-                    <BarChart
-                      data={nodeMemoryData}
-                      layout="vertical"
-                      margin={{ top: 0, right: 16, left: 0, bottom: 0 }}
-                    >
-                      <CartesianGrid
-                        strokeDasharray="3 3"
-                        stroke="hsl(var(--border))"
-                        horizontal={false}
-                      />
-                      <XAxis
-                        type="number"
-                        domain={[0, 100]}
-                        tick={{
-                          fontSize: 11,
-                          fill: 'currentColor',
-                        }}
-                        className="text-muted-foreground"
-                        stroke="currentColor"
-                        tickFormatter={v => `${v}%`}
-                        axisLine={{ stroke: 'currentColor', opacity: 0.2 }}
-                        tickLine={{ stroke: 'currentColor', opacity: 0.2 }}
-                      />
-                      <YAxis
-                        type="category"
-                        dataKey="node"
-                        tick={{
-                          fontSize: 11,
-                          fill: 'currentColor',
-                        }}
-                        className="text-muted-foreground"
-                        stroke="currentColor"
-                        width={88}
-                        axisLine={{ stroke: 'currentColor', opacity: 0.2 }}
-                        tickLine={{ stroke: 'currentColor', opacity: 0.2 }}
-                      />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: 'hsl(var(--popover))',
-                          border: '1px solid hsl(var(--border))',
-                          borderRadius: '8px',
-                          fontSize: '12px',
-                          color: 'hsl(var(--popover-foreground))',
-                          boxShadow: '0 8px 24px rgba(0,0,0,0.1)',
-                          padding: '8px 12px',
-                        }}
-                        labelStyle={{ color: 'hsl(var(--muted-foreground))', marginBottom: '4px' }}
-                        itemStyle={{ color: 'hsl(var(--foreground))' }}
-                        formatter={(value, name) => [
-                          `${value}%`,
-                          name === 'used' ? '사용 중' : '여유',
-                        ]}
-                      />
-                      <Bar dataKey="used" name="used">
-                        {nodeMemoryData.map((entry, index) => (
-                          <Cell
-                            key={`cell-${index}`}
-                            fill={
-                              NODE_COLORS[
-                                entry.type as keyof typeof NODE_COLORS
-                              ]
-                            }
-                          />
-                        ))}
-                      </Bar>
-                      <Bar
-                        dataKey="free"
-                        name="free"
-                        fill="#e2e8f0"
-                        radius={[0, 4, 4, 0]}
-                      />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  {metrics.loading ? (
+                    <div className="h-[200px] flex items-center justify-center"><Skeleton className="h-full w-full" /></div>
+                  ) : metrics.highMemoryNodes.length === 0 ? (
+                    <div className="h-[100px] flex flex-col items-center justify-center gap-2 border-2 border-dashed rounded-xl border-emerald-500/20 bg-emerald-500/[0.02]">
+                       <CheckCircle2 className="size-6 text-emerald-500" />
+                       <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">System Healthy</span>
+                    </div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={Math.max(100, metrics.highMemoryNodes.length * 40)}>
+                      <BarChart
+                        data={metrics.highMemoryNodes}
+                        layout="vertical"
+                        margin={{ top: 0, right: 16, left: 0, bottom: 0 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
+                        <XAxis type="number" domain={[0, 100]} hide />
+                        <YAxis
+                          type="category"
+                          dataKey="node"
+                          tick={{ fontSize: 10, fill: 'currentColor' }}
+                          className="text-muted-foreground font-mono"
+                          width={80}
+                          axisLine={false}
+                          tickLine={false}
+                        />
+                        <Tooltip
+                          contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '11px' }}
+                          formatter={(value) => [`${value}%`, '사용률']}
+                        />
+                        <Bar dataKey="used" radius={[0, 4, 4, 0]}>
+                          {metrics.highMemoryNodes.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill="#ef4444" />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
                 </CardContent>
               </Card>
             </Link>
 
-            {/* 네임스페이스별 Pod 상태 */}
+            {/* 네임스페이스별 Pod 상태 (Alert Focus) */}
             <Link href="/dashboard/infrastructure" className="group">
-              <Card className="transition-shadow group-hover:shadow-md">
+              <Card className={`transition-shadow group-hover:shadow-md ${metrics.unhealthyNamespaces.length > 0 ? 'border-amber-500/50 bg-amber-500/[0.02]' : ''}`}>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-semibold">
-                    네임스페이스별 Pod 상태
-                  </CardTitle>
-                  <CardDescription className="text-xs">
-                    실시간 파드 상태 요약
-                  </CardDescription>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className={`text-sm font-semibold ${metrics.unhealthyNamespaces.length > 0 ? 'text-amber-600' : ''}`}>
+                        네임스페이스별 이슈 파드
+                      </CardTitle>
+                      <CardDescription className="text-xs">
+                        {metrics.unhealthyNamespaces.length > 0 ? '비정상 상태의 파드가 포함된 네임스페이스입니다.' : '모든 네임스페이스의 파드가 정상입니다.'}
+                      </CardDescription>
+                    </div>
+                  </div>
                 </CardHeader>
                 <CardContent className="p-0">
-                  <div className="max-h-[300px] overflow-auto">
-                    <table className="w-full text-xs">
-                      <thead className="bg-background/95 sticky top-0 backdrop-blur">
-                        <tr className="text-muted-foreground border-b">
-                          <th className="px-4 py-2 text-left font-medium">
-                            Namespace
-                          </th>
-                          <th className="px-2 py-2 text-center font-medium text-[#4ade80]">
-                            Run
-                          </th>
-                          <th className="px-2 py-2 text-center font-medium text-[#fbbf24]">
-                            Pend
-                          </th>
-                          <th className="px-2 py-2 text-center font-medium text-[#f87171]">
-                            Fail
-                          </th>
-                          <th className="px-2 py-2 text-center font-medium text-[#a78bfa]">
-                            Crash
-                          </th>
-                          <th className="px-4 py-2 text-left font-medium">
-                            Labels
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {podNamespaceData.map((row, idx) => (
-                          <tr
-                            key={row.ns}
-                            className={
-                              idx < podNamespaceData.length - 1
-                                ? 'border-b'
-                                : ''
-                            }
-                          >
-                            <td className="px-4 py-2.5 font-mono font-medium">
-                              {row.ns}
-                            </td>
-                            <td className="px-2 py-2.5 text-center font-semibold text-[#4ade80]">
-                              {row.running || '—'}
-                            </td>
-                            <td className="px-2 py-2.5 text-center font-semibold text-[#fbbf24]">
-                              {row.pending || '—'}
-                            </td>
-                            <td className="px-2 py-2.5 text-center font-semibold text-[#f87171]">
-                              {row.failed || '—'}
-                            </td>
-                            <td className="px-2 py-2.5 text-center font-semibold text-[#a78bfa]">
-                              {row.crash || '—'}
-                            </td>
-                            <td className="px-4 py-2.5">
-                              <div className="flex flex-wrap gap-1">
-                                {row.labels.map((l: string) => (
-                                  <span
-                                    key={l}
-                                    className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[10px]"
-                                  >
-                                    {l}
-                                  </span>
-                                ))}
-                              </div>
-                            </td>
+                  {metrics.loading ? (
+                    <div className="p-6"><Skeleton className="h-20 w-full" /></div>
+                  ) : metrics.unhealthyNamespaces.length === 0 ? (
+                    <div className="py-10 flex flex-col items-center justify-center gap-2 border-t border-dashed">
+                       <CheckCircle2 className="size-6 text-emerald-500" />
+                       <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">All Pods Operational</span>
+                    </div>
+                  ) : (
+                    <div className="max-h-[300px] overflow-auto">
+                      <table className="w-full text-xs">
+                        <thead className="bg-background/95 sticky top-0 backdrop-blur">
+                          <tr className="text-muted-foreground border-b">
+                            <th className="px-4 py-2 text-left font-medium">Namespace</th>
+                            <th className="px-2 py-2 text-center font-medium text-[#fbbf24]">Pend</th>
+                            <th className="px-2 py-2 text-center font-medium text-[#f87171]">Fail</th>
+                            <th className="px-2 py-2 text-center font-medium text-[#a78bfa]">Crash</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                        </thead>
+                        <tbody>
+                          {metrics.unhealthyNamespaces.map((row, idx) => (
+                            <tr key={row.ns} className={idx < metrics.unhealthyNamespaces.length - 1 ? 'border-b' : ''}>
+                              <td className="px-4 py-2.5 font-mono font-medium">{row.ns}</td>
+                              <td className={`px-2 py-2.5 text-center font-semibold ${row.pending > 0 ? 'text-[#fbbf24]' : 'text-muted-foreground/30'}`}>{row.pending || '—'}</td>
+                              <td className={`px-2 py-2.5 text-center font-semibold ${row.failed > 0 ? 'text-[#f87171]' : 'text-muted-foreground/30'}`}>{row.failed || '—'}</td>
+                              <td className={`px-2 py-2.5 text-center font-semibold ${row.crash > 0 ? 'text-[#a78bfa]' : 'text-muted-foreground/30'}`}>{row.crash || '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </Link>
