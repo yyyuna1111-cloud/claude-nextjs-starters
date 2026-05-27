@@ -19,6 +19,8 @@ import {
   Server,
   XCircle,
   Zap,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react'
 import {
   BarChart,
@@ -35,6 +37,7 @@ import {
 } from 'recharts'
 
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
@@ -70,7 +73,7 @@ const counterCards = [
   },
   {
     href: '/dashboard/serving',
-    label: '등록된 모델',
+    label: '서빙 서비스',
     value: 12,
     colorClass: 'text-violet-400',
     bgClass: 'bg-violet-400/10',
@@ -448,6 +451,10 @@ function ActivityStatusBadge({ status }: { status: ActivityStatus }) {
 
 export default function DashboardPage() {
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>('all')
+  const [isTrainCollapsed, setIsTrainCollapsed] = useState(true)
+  const [isEvalCollapsed, setIsEvalCollapsed] = useState(true)
+  const [isActivityCollapsed, setIsActivityCollapsed] = useState(true)
+
   const [metrics, setMetrics] = useState({
     cpu: 0,
     memory: 0,
@@ -566,7 +573,7 @@ export default function DashboardPage() {
     },
     {
       href: '/dashboard/serving',
-      label: '등록된 모델',
+      label: '서빙 서비스',
       value: metrics.totalServices,
       colorClass: 'text-violet-400',
       bgClass: 'bg-violet-400/10',
@@ -751,17 +758,26 @@ export default function DashboardPage() {
             </Card>
 
             {/* 학습 현황 */}
-            <Link href="/dashboard/train" className="group">
-              <Card className="transition-shadow group-hover:shadow-md">
-                <CardHeader className="pb-2">
+            <Card className="transition-shadow hover:shadow-md">
+              <CardHeader 
+                className="pb-2 flex flex-row items-center justify-between space-y-0 cursor-pointer select-none" 
+                onClick={() => setIsTrainCollapsed(!isTrainCollapsed)}
+              >
+                <div>
                   <CardTitle className="text-sm font-semibold">
                     학습 현황
                   </CardTitle>
                   <CardDescription className="text-xs">
                     진행 중 · 최근 완료
                   </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
+                </div>
+                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                  {isTrainCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+                </Button>
+              </CardHeader>
+              {!isTrainCollapsed && (
+                <CardContent className="space-y-3 pt-0">
+                  <Separator className="mb-3" />
                   <div>
                     <p className="text-muted-foreground mb-1.5 text-[11px] font-medium tracking-wide uppercase">
                       진행 중
@@ -822,22 +838,36 @@ export default function DashboardPage() {
                       ))}
                     </div>
                   </div>
+                  <div className="pt-2">
+                    <Link href="/dashboard/train" className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors">
+                      <Play className="h-3 w-3" /> 전체 학습 목록 보기
+                    </Link>
+                  </div>
                 </CardContent>
-              </Card>
-            </Link>
+              )}
+            </Card>
 
             {/* 평가 현황 */}
-            <Link href="/dashboard/evaluation" className="group">
-              <Card className="transition-shadow group-hover:shadow-md">
-                <CardHeader className="pb-2">
+            <Card className="transition-shadow hover:shadow-md">
+              <CardHeader 
+                className="pb-2 flex flex-row items-center justify-between space-y-0 cursor-pointer select-none" 
+                onClick={() => setIsEvalCollapsed(!isEvalCollapsed)}
+              >
+                <div>
                   <CardTitle className="text-sm font-semibold">
                     평가 현황
                   </CardTitle>
                   <CardDescription className="text-xs">
                     진행 중 · 최근 완료 · Champion 교체 여부
                   </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
+                </div>
+                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                  {isEvalCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+                </Button>
+              </CardHeader>
+              {!isEvalCollapsed && (
+                <CardContent className="space-y-3 pt-0">
+                  <Separator className="mb-3" />
                   <div>
                     <p className="text-muted-foreground mb-1.5 text-[11px] font-medium tracking-wide uppercase">
                       진행 중
@@ -898,9 +928,14 @@ export default function DashboardPage() {
                       ))}
                     </div>
                   </div>
+                  <div className="pt-2">
+                    <Link href="/dashboard/evaluation" className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors">
+                      <Activity className="h-3 w-3" /> 전체 평가 목록 보기
+                    </Link>
+                  </div>
                 </CardContent>
-              </Card>
-            </Link>
+              )}
+            </Card>
           </div>
 
           <div className="flex flex-col gap-4">
@@ -1015,69 +1050,85 @@ export default function DashboardPage() {
 
             {/* 최근 활동 */}
             <Card>
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="text-sm font-semibold">
-                      최근 활동
-                    </CardTitle>
-                    <CardDescription className="text-xs">
-                      최근 이벤트 타임라인
-                    </CardDescription>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Clock className="text-muted-foreground size-3.5" />
-                    <span className="text-muted-foreground text-xs">
-                      실시간
-                    </span>
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-1.5 pt-1">
-                  {ACTIVITY_FILTERS.map(f => (
-                    <button
-                      key={f.key}
-                      onClick={() => setActivityFilter(f.key)}
-                      className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                        activityFilter === f.key
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-muted text-muted-foreground hover:bg-muted/70'
-                      }`}
-                    >
-                      {f.label}
-                    </button>
-                  ))}
-                </div>
-              </CardHeader>
-              <CardContent className="pt-1">
-                <div className="space-y-0">
-                  {filteredActivities.length === 0 ? (
-                    <p className="text-muted-foreground py-6 text-center text-xs">
-                      이벤트가 없습니다.
-                    </p>
-                  ) : (
-                    filteredActivities.map((activity, idx) => (
-                      <div key={activity.id}>
-                        <Link
-                          href={activity.href}
-                          className="hover:bg-muted/50 flex items-start gap-3 rounded-md py-2.5 transition-colors"
-                        >
-                          <ActivityIcon type={activity.type} />
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm leading-snug">
-                              {activity.description}
-                            </p>
-                            <p className="text-muted-foreground mt-0.5 text-xs">
-                              {activity.time}
-                            </p>
-                          </div>
-                          <ActivityStatusBadge status={activity.status} />
-                        </Link>
-                        {idx < filteredActivities.length - 1 && <Separator />}
+              <CardHeader 
+                className="pb-2 flex flex-row items-center justify-between space-y-0 cursor-pointer select-none" 
+                onClick={() => setIsActivityCollapsed(!isActivityCollapsed)}
+              >
+                <div className="flex-1">
+                  <div className="flex items-center justify-between mr-2">
+                    <div>
+                      <CardTitle className="text-sm font-semibold">
+                        최근 활동
+                      </CardTitle>
+                      <CardDescription className="text-xs">
+                        최근 이벤트 타임라인
+                      </CardDescription>
+                    </div>
+                    {!isActivityCollapsed && (
+                      <div className="flex items-center gap-1">
+                        <Clock className="text-muted-foreground size-3.5" />
+                        <span className="text-muted-foreground text-xs">
+                          실시간
+                        </span>
                       </div>
-                    ))
-                  )}
+                    )}
+                  </div>
                 </div>
-              </CardContent>
+                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                  {isActivityCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+                </Button>
+              </CardHeader>
+              {!isActivityCollapsed && (
+                <CardContent className="pt-1">
+                  <div className="flex flex-wrap gap-1.5 pb-3 pt-1">
+                    {ACTIVITY_FILTERS.map(f => (
+                      <button
+                        key={f.key}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActivityFilter(f.key);
+                        }}
+                        className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                          activityFilter === f.key
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-muted text-muted-foreground hover:bg-muted/70'
+                        }`}
+                      >
+                        {f.label}
+                      </button>
+                    ))}
+                  </div>
+                  <Separator className="mb-2" />
+                  <div className="space-y-0">
+                    {filteredActivities.length === 0 ? (
+                      <p className="text-muted-foreground py-6 text-center text-xs">
+                        이벤트가 없습니다.
+                      </p>
+                    ) : (
+                      filteredActivities.map((activity, idx) => (
+                        <div key={activity.id}>
+                          <Link
+                            href={activity.href}
+                            className="hover:bg-muted/50 flex items-start gap-3 rounded-md py-2.5 transition-colors"
+                          >
+                            <ActivityIcon type={activity.type} />
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm leading-snug">
+                                {activity.description}
+                              </p>
+                              <p className="text-muted-foreground mt-0.5 text-xs">
+                                {activity.time}
+                              </p>
+                            </div>
+                            <ActivityStatusBadge status={activity.status} />
+                          </Link>
+                          {idx < filteredActivities.length - 1 && <Separator />}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </CardContent>
+              )}
             </Card>
           </div>
         </div>
