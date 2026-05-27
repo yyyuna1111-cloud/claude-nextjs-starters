@@ -449,6 +449,7 @@ export default function DashboardPage() {
     memory: 0,
     gpu: 0,
     unhealthyPods: 0,
+    totalServices: 0,
     highMemoryNodes: [] as { node: string; used: number; free: number; type: string }[],
     unhealthyNamespaces: [] as { ns: string; running: number; pending: number; failed: number; crash: number; labels: string[] }[],
     loading: true
@@ -456,15 +457,17 @@ export default function DashboardPage() {
 
   const fetchMetrics = async () => {
     try {
-      const [nodeRes, gpuRes, podRes] = await Promise.all([
+      const [nodeRes, gpuRes, podRes, isvcRes] = await Promise.all([
         fetch('/api/k8s/nodes'),
         fetch('/api/k8s/gpu'),
-        fetch('/api/k8s/pods')
+        fetch('/api/k8s/pods'),
+        fetch('/api/k8s/isvcs')
       ])
 
       const nodeData = await nodeRes.json()
       const gpuData = await gpuRes.json()
       const podData = await podRes.json()
+      const isvcData = await isvcRes.json()
 
       // CPU/Memory 평균 및 고부하 노드 계산
       const nodes = nodeData.nodes || []
@@ -513,6 +516,7 @@ export default function DashboardPage() {
         memory: avgMem,
         gpu: gpuAllocated,
         unhealthyPods: unhealthyCount,
+        totalServices: isvcData.isvcs?.length || 0,
         highMemoryNodes: highMemNodes,
         unhealthyNamespaces: unhealthyNamespaces,
         loading: false
@@ -547,7 +551,7 @@ export default function DashboardPage() {
     {
       href: '/dashboard/serving',
       label: '등록된 모델',
-      value: 12,
+      value: metrics.totalServices,
       colorClass: 'text-violet-400',
       bgClass: 'bg-violet-400/10',
       icon: Box,
