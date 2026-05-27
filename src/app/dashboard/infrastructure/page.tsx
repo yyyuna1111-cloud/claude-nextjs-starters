@@ -36,8 +36,19 @@ import {
   Filter,
   ChevronLeft,
   ChevronRight,
+  RefreshCw,
 } from 'lucide-react'
 
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from 'recharts'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -106,17 +117,24 @@ interface NodeRow {
   yaml: string
 }
 
+interface GpuInstance {
+  id: string
+  profile: string
+  pod: string | null
+  utilization: number
+}
+
 interface GpuDevice {
   index: number
-  utilization: number
-  temperature?: number
-  power?: number
+  utilization: number // 합산 사용률
   status: GpuDeviceStatus
+  instances: GpuInstance[]
 }
 
 interface GpuNode {
   nodeName: string
   gpuModel: string
+  servingType: string // gpu-standard | gpu-high
   gpuCount: number
   devices: GpuDevice[]
 }
@@ -125,62 +143,14 @@ interface GpuNode {
 // 풍성한 더미 데이터 (Mock)
 // ─────────────────────────────────────────────
 
-const nodeData: NodeRow[] = [
-  { name: 'gpu-node-01', status: 'Ready', role: 'gpu-worker', cpuUsage: 72, memoryUsage: 81, gpuUsage: 88, diskPressure: false, memoryPressure: false, podCount: 14, yaml: '...' },
-  { name: 'gpu-node-02', status: 'Ready', role: 'gpu-worker', cpuUsage: 58, memoryUsage: 63, gpuUsage: 75, diskPressure: false, memoryPressure: false, podCount: 11, yaml: '...' },
-  { name: 'gpu-node-03', status: 'Ready', role: 'gpu-worker', cpuUsage: 45, memoryUsage: 55, gpuUsage: 60, diskPressure: false, memoryPressure: false, podCount: 9, yaml: '...' },
-  { name: 'gpu-node-04', status: 'NotReady', role: 'gpu-worker', cpuUsage: 12, memoryUsage: 18, gpuUsage: 0, diskPressure: true, memoryPressure: false, podCount: 2, yaml: '...' },
-  { name: 'cpu-node-01', status: 'Ready', role: 'worker', cpuUsage: 38, memoryUsage: 44, diskPressure: false, memoryPressure: false, podCount: 22, yaml: '...' },
-  { name: 'cpu-node-02', status: 'Ready', role: 'control-plane', cpuUsage: 21, memoryUsage: 33, diskPressure: false, memoryPressure: false, podCount: 18, yaml: '...' },
-]
+const resourceTrendData = Array.from({ length: 24 }, (_, i) => ({
+  time: `${String(i).padStart(2, '0')}:00`,
+  gpu: Math.round(60 + Math.sin(i * 0.5) * 20 + Math.random() * 10),
+  cpu: Math.round(45 + Math.cos(i * 0.4) * 15 + Math.random() * 8),
+  memory: Math.round(55 + Math.sin(i * 0.3 + 1) * 12 + Math.random() * 6),
+}))
 
-const gpuData: GpuNode[] = [
-  {
-    nodeName: 'gpu-node-01',
-    gpuModel: 'NVIDIA A100 80GB',
-    gpuCount: 8,
-    devices: [
-      { index: 0, utilization: 95, temperature: 78, power: 380, status: 'Occupied' },
-      { index: 1, utilization: 88, temperature: 75, power: 362, status: 'Occupied' },
-      { index: 2, utilization: 72, temperature: 71, power: 310, status: 'Occupied' },
-      { index: 3, utilization: 0, temperature: 38, power: 45, status: 'Available' },
-      { index: 4, utilization: 91, temperature: 80, power: 388, status: 'Occupied' },
-      { index: 5, utilization: 87, temperature: 76, power: 358, status: 'Occupied' },
-      { index: 6, utilization: 0, temperature: 36, power: 42, status: 'Available' },
-      { index: 7, utilization: 99, temperature: 83, power: 400, status: 'Occupied' },
-    ],
-  },
-  {
-    nodeName: 'gpu-node-02',
-    gpuModel: 'NVIDIA A100 80GB',
-    gpuCount: 8,
-    devices: [
-      { index: 0, utilization: 80, temperature: 72, power: 340, status: 'Occupied' },
-      { index: 1, utilization: 0, temperature: 37, power: 43, status: 'Available' },
-      { index: 2, utilization: 76, temperature: 70, power: 325, status: 'Occupied' },
-      { index: 3, utilization: 82, temperature: 73, power: 345, status: 'Occupied' },
-      { index: 4, utilization: 0, temperature: 35, power: 40, status: 'Available' },
-      { index: 5, utilization: 68, temperature: 68, power: 295, status: 'Occupied' },
-      { index: 6, utilization: 77, temperature: 71, power: 330, status: 'Occupied' },
-      { index: 7, utilization: 0, temperature: 36, power: 41, status: 'Available' },
-    ],
-  },
-  {
-    nodeName: 'gpu-node-03',
-    gpuModel: 'NVIDIA V100 32GB',
-    gpuCount: 4,
-    devices: [
-      { index: 0, utilization: 65, temperature: 68, power: 220, status: 'Occupied' },
-      { index: 1, utilization: 58, temperature: 65, power: 205, status: 'Occupied' },
-      { index: 2, utilization: 0, temperature: 34, power: 35, status: 'Available' },
-      { index: 3, utilization: 0, temperature: 33, power: 34, status: 'Available' },
-    ],
-  },
-]
-
-// ─────────────────────────────────────────────
-// 헬퍼 함수
-// ─────────────────────────────────────────────
+// 서빙 상태 배지 색상 매핑
 
 function getPodStatusBadge(status: string) {
   switch (status) {
@@ -206,9 +176,9 @@ function getNodeRoleBadge(role: NodeRole) {
 
 function getGpuStatusBadge(status: GpuDeviceStatus) {
   switch (status) {
-    case 'Available': return <Badge className="border-emerald-500/30 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold text-[9px] tracking-widest px-1.5 h-4">AVAIL</Badge>
-    case 'Occupied': return <Badge className="border-blue-500/30 bg-blue-500/15 text-blue-600 dark:text-blue-400 font-bold text-[9px] tracking-widest px-1.5 h-4">BUSY</Badge>
-    case 'Error': return <Badge className="border-red-500/30 bg-red-500/15 text-red-600 dark:text-red-400 font-bold text-[9px] tracking-widest px-1.5 h-4">ERR</Badge>
+    case 'Available': return <Badge className="border-emerald-500/30 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold text-[9px] tracking-widest px-1.5 h-4 uppercase">AVAIL</Badge>
+    case 'Occupied': return <Badge className="border-blue-500/30 bg-blue-500/15 text-blue-600 dark:text-blue-400 font-bold text-[9px] tracking-widest px-1.5 h-4 uppercase">OCCUPIED</Badge>
+    case 'Error': return <Badge className="border-red-500/30 bg-red-500/15 text-red-600 dark:text-red-400 font-bold text-[9px] tracking-widest px-1.5 h-4 uppercase">ERR</Badge>
   }
 }
 
@@ -289,6 +259,7 @@ export default function InfrastructurePage() {
     totalCount: number
     readyCount: number
     notReadyCount: number
+    nodes: NodeRow[]
   } | null>(null)
 
   const [podsLoading, setPodsLoading] = useState(true)
@@ -303,20 +274,46 @@ export default function InfrastructurePage() {
     pods: PodRow[]
   } | null>(null)
 
+  const [gpuLoading, setGpuLoading] = useState(true)
+  const [gpuNodes, setGpuNodes] = useState<GpuNode[]>([])
+
+  const [trendLoading, setTrendLoading] = useState(true)
+  const [trendData, setTrendData] = useState<{ 
+    cpu: { data: any[], nodes: string[] }, 
+    memory: { data: any[], nodes: string[] }, 
+    gpu: { data: any[], nodes: string[] } 
+  }>({
+    cpu: { data: [], nodes: [] },
+    memory: { data: [], nodes: [] },
+    gpu: { data: [], nodes: [] }
+  })
+  const [selectedMetricType, setSelectedMetricType] = useState<'cpu' | 'memory' | 'gpu'>('cpu')
+
   // 정렬 및 필터링 상태
   const [podSearch, setPodSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [nodeFilter, setNodeFilter] = useState<string | null>(null)
   const [sortConfig, setSortConfig] = useState<{ key: keyof PodRow; direction: 'asc' | 'desc' }>({
     key: 'name',
     direction: 'asc',
   })
+
+  // 노드 필터 및 정렬 상태
+  const [nodeStatusFilter, setNodeStatusFilter] = useState<string>('all')
+  const [nodeRoleFilter, setNodeRoleFilter] = useState<string>('all')
+  const [nodeSortConfig, setNodeSortConfig] = useState<{ key: keyof NodeRow; direction: 'asc' | 'desc' }>({
+    key: 'name',
+    direction: 'asc',
+  })
+
   const [currentPage, setCurrentPage] = useState(1)
   const ITEMS_PER_PAGE = 10
+  const [activeTab, setActiveTab] = useState('pod')
 
   // 필터 변경 시 페이지 초기화
   useEffect(() => {
     setCurrentPage(1)
-  }, [podSearch, statusFilter])
+  }, [podSearch, statusFilter, nodeFilter, nodeStatusFilter, nodeRoleFilter])
 
   const fetchNodes = async () => {
     setNodesLoading(true)
@@ -327,11 +324,12 @@ export default function InfrastructurePage() {
       setNodesSummary({
         totalCount: json.totalCount,
         readyCount: json.readyCount,
-        notReadyCount: json.notReadyCount
+        notReadyCount: json.notReadyCount,
+        nodes: json.nodes || []
       })
     } catch (err) {
       console.error('[Infrastructure] Fetch Nodes Error:', err)
-      setNodesSummary({ totalCount: 0, readyCount: 0, notReadyCount: 0 })
+      setNodesSummary({ totalCount: 0, readyCount: 0, notReadyCount: 0, nodes: [] })
     } finally {
       setNodesLoading(false)
     }
@@ -361,9 +359,45 @@ export default function InfrastructurePage() {
     }
   }
 
+  const fetchGpus = async () => {
+    setGpuLoading(true)
+    try {
+      const res = await fetch('/api/k8s/gpu')
+      if (!res.ok) throw new Error('API Response Error')
+      const json = await res.json()
+      setGpuNodes(json.gpuNodes || [])
+    } catch (err) {
+      console.error('[Infrastructure] Fetch Gpus Error:', err)
+      setGpuNodes([])
+    } finally {
+      setGpuLoading(false)
+    }
+  }
+
+  const fetchTrend = async () => {
+    setTrendLoading(true)
+    try {
+      const res = await fetch('/api/k8s/resources/trend')
+      if (!res.ok) throw new Error('API Error')
+      const json = await res.json()
+      setTrendData(json)
+    } catch (err) {
+      console.error('[Infrastructure] Fetch Trend Error:', err)
+      setTrendData({ 
+        cpu: { data: [], nodes: [] }, 
+        memory: { data: [], nodes: [] }, 
+        gpu: { data: [], nodes: [] } 
+      })
+    } finally {
+      setTrendLoading(false)
+    }
+  }
+
   useEffect(() => {
     fetchNodes()
     fetchPods()
+    fetchGpus()
+    fetchTrend()
   }, [])
 
   // Pod 필터링 및 정렬 로직
@@ -385,7 +419,12 @@ export default function InfrastructurePage() {
       result = result.filter(p => p.status === statusFilter)
     }
 
-    // 3. 정렬
+    // 3. 노드 필터
+    if (nodeFilter) {
+      result = result.filter(p => p.node === nodeFilter)
+    }
+
+    // 4. 정렬
     result.sort((a, b) => {
       const aVal = a[sortConfig.key]
       const bVal = b[sortConfig.key]
@@ -412,12 +451,63 @@ export default function InfrastructurePage() {
     }))
   }
 
-  // GPU 평균 사용률 계산
-  const allGpuDevices = gpuData.flatMap(n => n.devices)
-  const avgGpuUtilization = allGpuDevices.length > 0
-    ? Math.round(allGpuDevices.reduce((sum, dev) => sum + dev.utilization, 0) / allGpuDevices.length)
+  const toggleNodeSort = (key: keyof NodeRow) => {
+    setNodeSortConfig(prev => ({
+      key,
+      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc',
+    }))
+  }
+
+  // Node 필터링 및 정렬 로직
+  const filteredAndSortedNodes = React.useMemo(() => {
+    if (!nodesSummary?.nodes) return []
+
+    let result = [...nodesSummary.nodes]
+
+    // 1. 상태 필터
+    if (nodeStatusFilter !== 'all') {
+      result = result.filter(n => n.status === nodeStatusFilter)
+    }
+
+    // 2. 역할 필터
+    if (nodeRoleFilter !== 'all') {
+      result = result.filter(n => n.role === nodeRoleFilter)
+    }
+
+    // 3. 정렬
+    result.sort((a: any, b: any) => {
+      let aVal = a[nodeSortConfig.key]
+      let bVal = b[nodeSortConfig.key]
+
+      if (aVal === undefined) aVal = 0
+      if (bVal === undefined) bVal = 0
+
+      if (aVal < bVal) return nodeSortConfig.direction === 'asc' ? -1 : 1
+      if (aVal > bVal) return nodeSortConfig.direction === 'asc' ? 1 : -1
+      return 0
+    })
+
+    return result
+  }, [nodesSummary?.nodes, nodeStatusFilter, nodeRoleFilter, nodeSortConfig])
+
+  // GPU 슬롯 기반 상태 계산 (MIG + Tier 대응)
+  const standardInstances = gpuNodes
+    .filter(n => n.servingType === 'gpu-standard')
+    .flatMap(n => n.devices.flatMap(d => (d.instances || [])))
+  
+  const highInstances = gpuNodes
+    .filter(n => n.servingType === 'gpu-high')
+    .flatMap(n => n.devices.flatMap(d => (d.instances || [])))
+
+  const activeStandard = standardInstances.filter(inst => inst.utilization > 5).length
+  const activeHigh = highInstances.filter(inst => inst.utilization > 5).length
+  
+  const totalStandard = standardInstances.length
+  const totalHigh = highInstances.length
+
+  const activePercent = (totalStandard + totalHigh) > 0 
+    ? Math.round(((activeStandard + activeHigh) / (totalStandard + totalHigh)) * 100) 
     : 0
-  const busyGpuCount = allGpuDevices.filter(d => d.status === 'Occupied').length
 
   return (
     <div className="space-y-6">
@@ -492,40 +582,152 @@ export default function InfrastructurePage() {
           </CardContent>
         </Card>
 
-        {/* GPU 평균 사용률 */}
+        {/* GPU 자원 현황 (Tier 기반 슬롯) */}
         <Card className="gap-3 py-4 shadow-sm border-none ring-1 ring-border border-t-4 border-t-violet-500 bg-violet-500/[0.02] group hover:bg-violet-500/[0.04] transition-all">
           <CardHeader className="px-5 pb-0">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-violet-600 dark:text-violet-400 text-[10px] font-bold uppercase tracking-widest">Avg GPU Utilization</CardTitle>
+              <CardTitle className="text-violet-600 dark:text-violet-400 text-[10px] font-bold uppercase tracking-widest">GPU Active Slots</CardTitle>
               <Cpu className="text-violet-500 size-4" />
             </div>
           </CardHeader>
           <CardContent className="px-5 pt-1">
-            <div className="text-4xl font-bold tracking-tighter text-violet-600 dark:text-violet-400">
-              {avgGpuUtilization}%
+            <div className="flex items-baseline gap-4">
+              <div className="flex flex-col">
+                <span className="text-4xl font-bold tracking-tighter text-violet-600 dark:text-violet-400">
+                  {gpuLoading ? <Skeleton className="h-10 w-16" /> : `${activeStandard + activeHigh}`}
+                </span>
+                <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">Total Active</span>
+              </div>
+              <div className="h-8 w-px bg-border/50 mx-1" />
+              <div className="grid grid-cols-2 gap-x-6 gap-y-1">
+                <div className="flex flex-col">
+                   <span className="text-xs font-bold font-mono text-violet-500/80">{gpuLoading ? '..' : activeStandard} <span className="text-muted-foreground/50 text-[10px]">/ {totalStandard}</span></span>
+                   <span className="text-[8px] font-bold text-muted-foreground/40 uppercase tracking-tighter">Standard</span>
+                </div>
+                <div className="flex flex-col">
+                   <span className="text-xs font-bold font-mono text-violet-500/80">{gpuLoading ? '..' : activeHigh} <span className="text-muted-foreground/50 text-[10px]">/ {totalHigh}</span></span>
+                   <span className="text-[8px] font-bold text-muted-foreground/40 uppercase tracking-tighter">High-Perf</span>
+                </div>
+              </div>
             </div>
-            <div className="mt-2 space-y-1.5">
+            <div className="mt-3 space-y-1.5">
               <div className="flex items-center gap-2 text-[10px] font-bold text-violet-700/80 dark:text-violet-400/80 uppercase tracking-tight">
                 <Zap className="size-3" />
-                {busyGpuCount} / {allGpuDevices.length} GPUs Active
+                {gpuLoading ? 'Calculating...' : `${activePercent}% Resource Allocated`}
               </div>
-              <Progress value={avgGpuUtilization} className={`h-1 bg-violet-200/50 dark:bg-violet-900/20 shadow-inner ${getGpuProgressClass(avgGpuUtilization)}`} />
+              <Progress value={activePercent} className={`h-1 bg-violet-200/50 dark:bg-violet-900/20 shadow-inner ${getGpuProgressClass(activePercent)}`} />
             </div>
           </CardContent>
         </Card>
       </div>
 
-      <Tabs defaultValue="pod" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList className="h-12 gap-1 p-1 bg-muted/40 border shadow-inner rounded-xl ring-1 ring-border">
           <TabsTrigger value="pod" className="gap-1.5 py-2 px-6 font-bold text-[11px] uppercase tracking-widest data-[state=active]:bg-background data-[state=active]:shadow-md rounded-lg"><Box className="size-3.5" />Pod</TabsTrigger>
           <TabsTrigger value="node" className="gap-1.5 py-2 px-6 font-bold text-[11px] uppercase tracking-widest data-[state=active]:bg-background data-[state=active]:shadow-md rounded-lg"><Server className="size-3.5" />Node</TabsTrigger>
           <TabsTrigger value="gpu" className="gap-1.5 py-2 px-6 font-bold text-[11px] uppercase tracking-widest data-[state=active]:bg-background data-[state=active]:shadow-md rounded-lg"><Cpu className="size-3.5" />GPU</TabsTrigger>
+          <TabsTrigger value="metric" className="gap-1.5 py-2 px-6 font-bold text-[11px] uppercase tracking-widest data-[state=active]:bg-background data-[state=active]:shadow-md rounded-lg"><Activity className="size-3.5" />Metric</TabsTrigger>
         </TabsList>
+
+        {/* Metric 탭 */}
+        <TabsContent value="metric" className="space-y-4">
+          <div className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-card p-4 rounded-xl border ring-1 ring-border shadow-sm">
+             <div className="flex items-center gap-2">
+                <div className="p-2 bg-primary/10 rounded-lg text-primary"><Activity size={16} /></div>
+                <div>
+                   <h3 className="text-xs font-bold uppercase tracking-widest">Resource Usage Trend</h3>
+                   <p className="text-[10px] text-muted-foreground font-medium">Historical data by individual node</p>
+                </div>
+             </div>
+             <div className="flex bg-muted/40 p-1 rounded-lg ring-1 ring-border">
+                {(['cpu', 'memory', 'gpu'] as const).map(t => (
+                   <button 
+                     key={t}
+                     onClick={() => setSelectedMetricType(t)}
+                     className={`px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all ${selectedMetricType === t ? 'bg-background text-primary shadow-sm ring-1 ring-border' : 'text-muted-foreground hover:text-foreground'}`}
+                   >
+                     {t}
+                   </button>
+                ))}
+             </div>
+          </div>
+
+          <Card className="shadow-sm border-none ring-1 ring-border overflow-hidden bg-card/50 backdrop-blur-sm">
+            <CardContent className="pt-8 pb-4">
+              {trendLoading ? (
+                <div className="h-[400px] flex flex-col gap-4 items-center justify-center">
+                   <RefreshCw className="size-8 text-primary/40 animate-spin" />
+                   <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Analyzing Prometheus Data...</span>
+                </div>
+              ) : (!trendData || !trendData[selectedMetricType] || !trendData[selectedMetricType].data || trendData[selectedMetricType].data.length === 0) ? (
+                <div className="h-[400px] flex items-center justify-center text-muted-foreground text-sm font-bold uppercase tracking-widest border-2 border-dashed rounded-xl">No Metric Data Available</div>
+              ) : (
+                <ResponsiveContainer width="100%" height={400}>
+                  <LineChart
+                    data={trendData[selectedMetricType].data}
+                    margin={{ top: 0, right: 30, left: -10, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                    <XAxis
+                      dataKey="time"
+                      tick={{ fontSize: 10, fill: 'currentColor' }}
+                      className="text-muted-foreground"
+                      stroke="currentColor"
+                      interval={2}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      tick={{ fontSize: 11, fill: 'currentColor' }}
+                      className="text-muted-foreground"
+                      stroke="currentColor"
+                      domain={[0, 100]}
+                      axisLine={false}
+                      tickLine={false}
+                      tickFormatter={(v) => `${v}%`}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: 'hsl(var(--popover))',
+                        border: '1px solid hsl(var(--border))',
+                        borderRadius: '12px',
+                        fontSize: '11px',
+                        color: 'hsl(var(--popover-foreground))',
+                        boxShadow: '0 10px 30px rgba(0,0,0,0.1)',
+                        padding: '12px',
+                      }}
+                      labelStyle={{ fontWeight: 'bold', color: 'hsl(var(--muted-foreground))', marginBottom: '8px', borderBottom: '1px solid hsl(var(--border))', paddingBottom: '4px' }}
+                    />
+                    <Legend
+                      wrapperStyle={{ fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase', paddingTop: '30px' }}
+                    />
+                    {(trendData[selectedMetricType].nodes || []).map((node, i) => {
+                      const colors = ['#8b5cf6', '#10b881', '#3b82f6', '#f59e0b', '#ec4899', '#06b6d4', '#f97316', '#84cc16']
+                      return (
+                        <Line 
+                          key={node} 
+                          type="monotone" 
+                          dataKey={node} 
+                          stroke={colors[i % colors.length]} 
+                          strokeWidth={2} 
+                          dot={{ r: 2, fill: colors[i % colors.length], strokeWidth: 0 }} 
+                          activeDot={{ r: 4, strokeWidth: 0 }}
+                          name={node.toUpperCase()}
+                          connectNulls
+                        />
+                      )
+                    })}
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         {/* Pod 탭 */}
         <TabsContent value="pod" className="space-y-4">
           <div className="flex flex-col sm:flex-row gap-4 items-end sm:items-center justify-between bg-card p-4 rounded-xl border ring-1 ring-border shadow-sm">
-             <div className="flex flex-1 items-center gap-3 w-full sm:max-w-md">
+             <div className="flex flex-1 items-center gap-3 w-full sm:max-w-2xl">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                   <Input 
@@ -535,6 +737,14 @@ export default function InfrastructurePage() {
                     onChange={(e) => setPodSearch(e.target.value)}
                   />
                 </div>
+                {nodeFilter && (
+                  <Badge variant="secondary" className="h-10 px-3 gap-2 bg-primary/10 text-primary border-primary/20 shrink-0 uppercase font-bold text-[10px] tracking-tight">
+                    Node: {nodeFilter}
+                    <button onClick={() => setNodeFilter(null)} className="hover:text-foreground">
+                      <XCircle className="size-3" />
+                    </button>
+                  </Badge>
+                )}
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
                   <SelectTrigger className="w-[160px] h-10 bg-muted/20 border-none ring-1 ring-border">
                     <div className="flex items-center gap-2">
@@ -667,44 +877,117 @@ export default function InfrastructurePage() {
         </TabsContent>
 
         {/* Node 탭 */}
-        <TabsContent value="node">
+        <TabsContent value="node" className="space-y-4">
+          <div className="flex flex-col sm:flex-row gap-4 items-end sm:items-center justify-between bg-card p-4 rounded-xl border ring-1 ring-border shadow-sm">
+             <div className="flex flex-1 items-center gap-3 w-full sm:max-w-2xl">
+                <Select value={nodeStatusFilter} onValueChange={setNodeStatusFilter}>
+                  <SelectTrigger className="w-[160px] h-10 bg-muted/20 border-none ring-1 ring-border">
+                    <div className="flex items-center gap-2">
+                      <Filter className="size-3.5 text-muted-foreground" />
+                      <SelectValue placeholder="Status" />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Statuses</SelectItem>
+                    <SelectItem value="Ready">Ready</SelectItem>
+                    <SelectItem value="NotReady">Not Ready</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Select value={nodeRoleFilter} onValueChange={setNodeRoleFilter}>
+                  <SelectTrigger className="w-[160px] h-10 bg-muted/20 border-none ring-1 ring-border">
+                    <div className="flex items-center gap-2">
+                      <Layers className="size-3.5 text-muted-foreground" />
+                      <SelectValue placeholder="Role" />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Roles</SelectItem>
+                    <SelectItem value="control-plane">Control Plane</SelectItem>
+                    <SelectItem value="worker">Worker</SelectItem>
+                    <SelectItem value="gpu-worker">GPU Worker</SelectItem>
+                  </SelectContent>
+                </Select>
+             </div>
+             <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground bg-muted/30 px-3 py-1.5 rounded-full">
+               Showing {filteredAndSortedNodes.length} Nodes
+             </div>
+          </div>
+
           <div className="rounded-xl border bg-card shadow-sm overflow-hidden ring-1 ring-border border-none">
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/50 hover:bg-muted/50 border-none border-b ring-1 ring-border">
-                  <TableHead className="pl-6 font-bold uppercase text-[10px] tracking-widest text-muted-foreground/70">Host Identifier</TableHead>
-                  <TableHead className="font-bold uppercase text-[10px] tracking-widest text-muted-foreground/70">Status</TableHead>
-                  <TableHead className="font-bold uppercase text-[10px] tracking-widest text-muted-foreground/70">Role</TableHead>
-                  <TableHead className="w-72 font-bold uppercase text-[10px] tracking-widest text-muted-foreground/70">Utilization</TableHead>
-                  <TableHead className="font-bold uppercase text-[10px] tracking-widest text-center text-muted-foreground/70">Pods</TableHead>
-                  <TableHead className="font-bold uppercase text-[10px] tracking-widest text-muted-foreground/70">Hardware Alerts</TableHead>
+                  <TableHead className="pl-6 font-bold uppercase text-[10px] tracking-widest text-muted-foreground/70">
+                    <button onClick={() => toggleNodeSort('name')} className="flex items-center gap-1 hover:text-foreground transition-colors">
+                      Host Identifier <ArrowUpDown className="size-3" />
+                    </button>
+                  </TableHead>
+                  <TableHead className="font-bold uppercase text-[10px] tracking-widest text-muted-foreground/70">
+                    <button onClick={() => toggleNodeSort('status')} className="flex items-center gap-1 hover:text-foreground transition-colors">
+                      Status <ArrowUpDown className="size-3" />
+                    </button>
+                  </TableHead>
+                  <TableHead className="font-bold uppercase text-[10px] tracking-widest text-muted-foreground/70">
+                    <button onClick={() => toggleNodeSort('role')} className="flex items-center gap-1 hover:text-foreground transition-colors">
+                      Role <ArrowUpDown className="size-3" />
+                    </button>
+                  </TableHead>
+                  <TableHead className="w-72 font-bold uppercase text-[10px] tracking-widest text-muted-foreground/70">
+                    <div className="flex items-center gap-4">
+                      <span>Utilization</span>
+                      <div className="flex gap-2">
+                        <button onClick={() => toggleNodeSort('cpuUsage')} className="text-[8px] hover:text-primary transition-colors flex items-center gap-0.5">CPU <ArrowUpDown className="size-2" /></button>
+                        <button onClick={() => toggleNodeSort('memoryUsage')} className="text-[8px] hover:text-primary transition-colors flex items-center gap-0.5">MEM <ArrowUpDown className="size-2" /></button>
+                        <button onClick={() => toggleNodeSort('gpuUsage' as any)} className="text-[8px] hover:text-primary transition-colors flex items-center gap-0.5">GPU <ArrowUpDown className="size-2" /></button>
+                      </div>
+                    </div>
+                  </TableHead>
+                  <TableHead className="font-bold uppercase text-[10px] tracking-widest text-center text-muted-foreground/70">
+                    <button onClick={() => toggleNodeSort('podCount')} className="flex items-center gap-1 mx-auto hover:text-foreground transition-colors">
+                      Pods <ArrowUpDown className="size-3" />
+                    </button>
+                  </TableHead>
                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {nodeData.map(node => (
+                {nodesLoading ? (
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <TableRow key={i}><TableCell colSpan={6} className="pl-6 py-4"><Skeleton className="h-6 w-full" /></TableCell></TableRow>
+                  ))
+                ) : filteredAndSortedNodes.length === 0 ? (
+                  <TableRow><TableCell colSpan={6} className="text-center py-20 text-muted-foreground text-sm font-bold uppercase tracking-widest">No Nodes Match Filters</TableCell></TableRow>
+                ) : filteredAndSortedNodes.map(node => (
                   <TableRow key={node.name} className="hover:bg-primary/[0.02] border-b last:border-0 group transition-colors">
-                    <TableCell className="pl-6 font-mono text-xs font-bold tracking-tighter text-foreground">{node.name.toUpperCase()}</TableCell>
+                    <TableCell className="pl-6 font-mono text-xs tracking-tighter text-foreground">
+                      <button 
+                        onClick={() => {
+                          setNodeFilter(node.name)
+                          setActiveTab('pod')
+                        }}
+                        className="hover:text-primary hover:underline transition-all text-left"
+                      >
+                        {node.name.toUpperCase()}
+                      </button>
+                    </TableCell>
                     <TableCell>{getNodeStatusBadge(node.status)}</TableCell>
                     <TableCell>{getNodeRoleBadge(node.role)}</TableCell>
                     <TableCell>
-                      <div className="space-y-2 py-3 px-1">
-                        <div className="flex justify-between text-[9px] uppercase font-bold text-muted-foreground/90 tabular-nums tracking-widest">
-                          <span className="flex items-center gap-1.5"><div className="size-1 rounded-full bg-emerald-500" /> CPU {node.cpuUsage}%</span>
-                          <span className="flex items-center gap-1.5"><div className="size-1 rounded-full bg-blue-500" /> MEM {node.memoryUsage}%</span>
+                      <div className="space-y-1.5 py-2 px-1">
+                        <div className="flex justify-between text-[8px] uppercase font-bold text-muted-foreground/70 tabular-nums tracking-tighter">
+                          <span className="flex items-center gap-1"><div className="size-1 rounded-full bg-emerald-500" /> CPU {node.cpuUsage}%</span>
+                          <span className="flex items-center gap-1"><div className="size-1 rounded-full bg-blue-500" /> MEM {node.memoryUsage}%</span>
+                          {node.role === 'gpu-worker' && <span className="flex items-center gap-1"><div className="size-1 rounded-full bg-violet-500" /> GPU {node.gpuUsage || 0}%</span>}
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex gap-1.5">
                            <Progress value={node.cpuUsage} className={`h-1.5 flex-1 shadow-inner rounded-full ${getCpuProgressClass(node.cpuUsage)}`} />
                            <Progress value={node.memoryUsage} className={`h-1.5 flex-1 shadow-inner rounded-full ${getMemProgressClass(node.memoryUsage)}`} />
+                           {node.role === 'gpu-worker' && <Progress value={node.gpuUsage || 0} className={`h-1.5 flex-1 shadow-inner rounded-full ${getGpuProgressClass(node.gpuUsage || 0)}`} />}
                         </div>
                       </div>
                     </TableCell>
                     <TableCell className="text-center font-bold font-mono text-xs tabular-nums text-foreground/80">{node.podCount}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-1.5">
-                        {node.diskPressure ? <Badge variant="destructive" className="h-4 text-[8px] px-1 font-bold  tracking-tighter">DISK_ALERT</Badge> : <span className="text-[9px] font-bold text-emerald-500 uppercase tracking-widest flex items-center gap-1"><div className="size-1 rounded-full bg-emerald-500 shadow-[0_0_3px_#10b881]" />Optimal</span>}
-                      </div>
-                    </TableCell>
                     <TableCell className="pr-6 text-right">
                       <Button variant="ghost" size="sm" className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 hover:bg-primary/10 hover:text-primary transition-all rounded-md" onClick={() => setSelectedYaml({ title: node.name, yaml: node.yaml })}><Layers className="size-3.5" /></Button>
                     </TableCell>
@@ -717,51 +1000,94 @@ export default function InfrastructurePage() {
 
         {/* GPU 탭 */}
         <TabsContent value="gpu">
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-            {gpuData.map(gpuNode => (
-              <Card key={gpuNode.nodeName} className="border-l-4 border-l-violet-500 shadow-lg overflow-hidden ring-1 ring-border border-none bg-card/50 backdrop-blur-sm group hover:ring-violet-500/40 transition-all">
-                <CardHeader className="pb-3 bg-muted/30 border-b">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <CardTitle className="font-mono text-sm flex items-center gap-2 font-bold tracking-tight">
-                        <div className="p-1 bg-violet-500/10 rounded-md">
-                           <Cpu className="size-4 text-violet-500 animate-pulse" />
-                        </div>
-                        {gpuNode.nodeName.toUpperCase()}
-                      </CardTitle>
-                      <CardDescription className="text-[10px] font-bold mt-2 text-muted-foreground/80 tracking-widest flex items-center gap-2">
-                        {gpuNode.gpuModel} &middot; <span className="text-violet-500">{gpuNode.devices.length} ACCELERATORS</span>
-                      </CardDescription>
-                    </div>
-                    <Badge className="bg-violet-600 text-white border-none text-[8px] h-5 font-bold tracking-widest shadow-[0_0_10px_rgba(139,92,246,0.2)]">LIVE</Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-5 grid grid-cols-2 gap-4">
-                  {gpuNode.devices.map(dev => (
-                    <div key={dev.index} className="bg-background/80 rounded-xl p-4 border shadow-sm hover:border-violet-500/40 hover:shadow-md transition-all group/item">
-                      <div className="flex justify-between items-center mb-4">
-                        <div className="flex items-center gap-2">
-                           <span className="text-[10px] font-bold text-muted-foreground/60 font-mono">XID_{dev.index}</span>
-                        </div>
-                        {getGpuStatusBadge(dev.status)}
+          {gpuLoading ? (
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+               {Array.from({ length: 2 }).map((_, i) => (
+                 <Card key={i} className="h-64"><Skeleton className="h-full w-full" /></Card>
+               ))}
+            </div>
+          ) : gpuNodes.length === 0 ? (
+            <div className="text-center py-20 bg-card rounded-xl border border-dashed border-muted-foreground/30 text-muted-foreground text-sm font-bold uppercase tracking-widest">
+              No GPU Accelerators Detected in Cluster
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+              {gpuNodes.map(gpuNode => (
+                <Card key={gpuNode.nodeName} className="border-l-4 border-l-violet-500 shadow-lg overflow-hidden ring-1 ring-border border-none bg-card/50 backdrop-blur-sm group hover:ring-violet-500/40 transition-all">
+                  <CardHeader className="pb-3 bg-muted/30 border-b">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <CardTitle className="font-mono text-sm flex items-center gap-2 font-bold tracking-tight">
+                          <div className="p-1 bg-violet-500/10 rounded-md">
+                             <Cpu className="size-4 text-violet-500 animate-pulse" />
+                          </div>
+                          <button 
+                            onClick={() => {
+                              setNodeFilter(gpuNode.nodeName)
+                              setActiveTab('pod')
+                            }}
+                            className="hover:text-primary hover:underline transition-all"
+                          >
+                            {gpuNode.nodeName.toUpperCase()}
+                          </button>
+                          {gpuNode.servingType === 'gpu-high' ? (
+                            <Badge className="ml-1 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 text-[8px] h-4 px-1.5 font-bold tracking-tight">HIGH-PERF</Badge>
+                          ) : (
+                            <Badge className="ml-1 bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20 text-[8px] h-4 px-1.5 font-bold tracking-tight">STANDARD</Badge>
+                          )}
+                        </CardTitle>
+                        <CardDescription className="text-[10px] font-bold mt-2 text-muted-foreground/80 tracking-widest flex items-center gap-2 uppercase">
+                          {gpuNode.gpuModel} &middot; <span className="text-violet-500">
+                            {gpuNode.devices.reduce((sum, dev) => sum + (dev.instances?.length || 0), 0)} GPU SLOTS
+                          </span>
+                        </CardDescription>
                       </div>
-                      <Progress value={dev.utilization} className={`h-2.5 mb-4 shadow-inner rounded-full ${getGpuProgressClass(dev.utilization)}`} />
-                      <div className="flex justify-between items-end text-[10px] font-bold font-mono">
-                        <div className="flex flex-col gap-0.5">
-                          <span className="text-[8px] text-muted-foreground/40 uppercase tracking-widest font-bold">Compute Load</span>
-                          <span className="text-violet-500 text-lg leading-none ">{dev.utilization}%</span>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-5 grid grid-cols-2 gap-4">
+                    {gpuNode.devices.map(dev => (
+                      <div key={`${gpuNode.nodeName}-${dev.index}`} className="bg-background/80 rounded-xl p-4 border shadow-sm hover:border-violet-500/40 hover:shadow-md transition-all group/item">
+                        <div className="flex justify-between items-center mb-3">
+                          <div className="flex items-center gap-2">
+                             <span className="text-[10px] font-bold text-muted-foreground/60 font-mono uppercase tracking-tighter">GPU_{dev.index}</span>
+                          </div>
+                          {getGpuStatusBadge(dev.status)}
                         </div>
-                        <div className="text-right flex flex-col gap-0.5">
-                          <span className="text-[8px] text-muted-foreground/40 uppercase tracking-widest font-bold">Metrics</span>
-                          <span className="text-[10px] leading-none text-foreground/80 tabular-nums">{dev.temperature}°C / {dev.power}W</span>
+                        
+                        <div className="space-y-1.5 mb-4">
+                          {(dev.instances || []).map((inst, i) => (
+                            <div key={inst.id + i} className="space-y-0.5">
+                              <Progress 
+                                value={inst.utilization} 
+                                className={`h-2 shadow-inner rounded-full ${getGpuProgressClass(inst.utilization)}`} 
+                              />
+                              {inst.pod && (
+                                <div className="text-[7px] text-muted-foreground/50 truncate font-mono px-1">
+                                  {inst.pod} ({inst.profile})
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="flex justify-between items-end text-[10px] font-bold font-mono">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-[8px] text-muted-foreground/40 uppercase tracking-widest font-bold">Total Load</span>
+                            <span className="text-violet-500 text-lg leading-none ">{dev.utilization}%</span>
+                          </div>
+                          <div className="text-right">
+                             <span className="text-[8px] text-muted-foreground/30 uppercase font-bold tracking-tight">
+                               {(dev.instances || []).length > 1 ? `${dev.instances.length} MIG INST` : 'SINGLE'}
+                             </span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
         </TabsContent>
       </Tabs>
 
