@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -13,6 +13,7 @@ import {
   RefreshCw,
   Search,
   Activity,
+  Copy
 } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
@@ -63,186 +64,114 @@ export default function ISVCDetailPage() {
   const id = params.id as string
   const namespace = searchParams.get('ns') || 'default'
 
+  const [isvcData, setIsvcData] = useState<any>(null)
   const [pods, setPods] = useState<Pod[]>([])
+  const [engineInfo, setEngineInfo] = useState<{ name: string; image: string }>({ name: 'Detecting...', image: '...' })
+  const [errorMetrics, setErrorMetrics] = useState<{ error413: any[], error429: any[], error5xx: any[] }>({ error413: [], error429: [], error5xx: [] })
+  const [resourceMetrics, setResourceMetrics] = useState<{ cpu: any[], memory: any[], gpu: any[], gpuMem: any[] }>({ cpu: [], memory: [], gpu: [], gpuMem: [] })
+  const [trafficMetrics, setTrafficMetrics] = useState<{ rps: any[], latency: any[], queue: any[] }>({ rps: [], latency: [], queue: [] })
+  
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activeResourceTab, setActiveResourceTab] = useState<'cpu' | 'memory' | 'gpu' | 'gpu_mem'>('cpu')
   const [treeNodes, setTreeNodes] = useState<ArgoNode[]>([])
 
-  const fetchPods = async () => {
+  const fetchDetailData = async () => {
     setLoading(true)
     setError(null)
     try {
-      // 실제 구현 시에는 특정 ISVC의 Pod만 가져오는 API가 필요합니다.
-      const res = await fetch(`/api/k8s/resources`)
+      const res = await fetch(`/api/k8s/isvcs/${id}?ns=${namespace}`)
+      if (!res.ok) throw new Error('API Error')
       const data = await res.json()
       
-      if (data.error) throw new Error(data.error)
+      setIsvcData(data.isvc)
+      setPods(data.pods)
+      setEngineInfo({
+        name: data.engine,
+        image: data.mainImage
+      })
+      setErrorMetrics(data.errorMetrics || { error413: [], error429: [], error5xx: [] })
+      setResourceMetrics(data.resourceMetrics || { cpu: [], memory: [], gpu: [], gpuMem: [] })
+      setTrafficMetrics(data.trafficMetrics || { rps: [], latency: [], queue: [] })
 
-      // 현재는 구조 구성을 위한 더미 데이터를 표시합니다.
-      setTimeout(() => {
-        setPods([
-          {
-            name: `${id}-predictor-default-00001-deployment-7f8b9`,
-            status: 'Running',
-            node: 'gpu-node-01',
-            podIp: '10.244.1.45',
-            restarts: 0,
-            age: '2d 4h',
-          },
-          {
-            name: `${id}-predictor-default-00001-deployment-8c2d1`,
-            status: 'Running',
-            node: 'gpu-node-02',
-            podIp: '10.244.2.12',
-            restarts: 1,
-            age: '1d 12h',
-          },
-        ])
+      // 4. 배포 구조도 더미 데이터
+      setTreeNodes([
+        { uid: 'isvc-001', name: id, kind: 'InferenceService', group: 'serving.kserve.io', version: 'v1beta1', health: { status: 'Healthy' } },
+        { uid: 'pred-001', name: `${id}-predictor`, kind: 'Predictor', group: 'serving.kserve.io', version: 'v1beta1', health: { status: 'Healthy' }, parentRefs: [{ uid: 'isvc-001', kind: 'InferenceService', name: id }] },
+        { uid: 'svc-001', name: `${id}-predictor-default`, kind: 'Service', version: 'v1', health: { status: 'Healthy' }, parentRefs: [{ uid: 'pred-001', kind: 'Predictor', name: `${id}-predictor` }] },
+        { uid: 'deploy-001', name: `${id}-predictor-default-00001-deployment`, kind: 'Deployment', group: 'apps', version: 'v1', health: { status: 'Healthy' }, parentRefs: [{ uid: 'svc-001', kind: 'Service', name: `${id}-predictor-default` }] },
+        { uid: 'rs-001', name: `${id}-predictor-default-00001-7f8b9`, kind: 'ReplicaSet', group: 'apps', version: 'v1', health: { status: 'Healthy' }, parentRefs: [{ uid: 'deploy-001', kind: 'Deployment', name: `${id}-predictor-default-00001-deployment` }] },
+        { uid: 'pod-001', name: `${id}-predictor-default-00001-deployment-7f8b9-abcd`, kind: 'Pod', version: 'v1', health: { status: 'Healthy' }, parentRefs: [{ uid: 'rs-001', kind: 'ReplicaSet', name: `${id}-predictor-default-00001-7f8b9` }] },
+      ])
 
-        // 배포 구조도 더미 데이터 (Argo CD v1alpha1ApplicationTree 스키마 준수)
-        setTreeNodes([
-          { 
-            uid: 'isvc-001', 
-            name: id, 
-            kind: 'InferenceService', 
-            group: 'serving.kserve.io',
-            version: 'v1beta1',
-            health: { status: 'Healthy' } 
-          },
-          { 
-            uid: 'pred-001', 
-            name: `${id}-predictor`, 
-            kind: 'Predictor', 
-            group: 'serving.kserve.io',
-            version: 'v1beta1',
-            health: { status: 'Healthy' }, 
-            parentRefs: [{ uid: 'isvc-001', kind: 'InferenceService', name: id }] 
-          },
-          { 
-            uid: 'svc-001', 
-            name: `${id}-predictor-default`, 
-            kind: 'Service', 
-            version: 'v1',
-            health: { status: 'Healthy' }, 
-            parentRefs: [{ uid: 'pred-001', kind: 'Predictor', name: `${id}-predictor` }] 
-          },
-          { 
-            uid: 'deploy-001', 
-            name: `${id}-predictor-default-00001-deployment`, 
-            kind: 'Deployment', 
-            group: 'apps',
-            version: 'v1',
-            health: { status: 'Healthy' }, 
-            parentRefs: [{ uid: 'svc-001', kind: 'Service', name: `${id}-predictor-default` }] 
-          },
-          { 
-            uid: 'rs-001', 
-            name: `${id}-predictor-default-00001-7f8b9`, 
-            kind: 'ReplicaSet', 
-            group: 'apps',
-            version: 'v1',
-            health: { status: 'Healthy' }, 
-            parentRefs: [{ uid: 'deploy-001', kind: 'Deployment', name: `${id}-predictor-default-00001-deployment` }] 
-          },
-          { 
-            uid: 'pod-001', 
-            name: `${id}-predictor-default-00001-deployment-7f8b9-abcd`, 
-            kind: 'Pod', 
-            version: 'v1',
-            health: { status: 'Healthy' }, 
-            parentRefs: [{ uid: 'rs-001', kind: 'ReplicaSet', name: `${id}-predictor-default-00001-7f8b9` }] 
-          },
-          { 
-            uid: 'pod-002', 
-            name: `${id}-predictor-default-00001-deployment-7f8b9-efgh`, 
-            kind: 'Pod', 
-            version: 'v1',
-            health: { status: 'Healthy' }, 
-            parentRefs: [{ uid: 'rs-001', kind: 'ReplicaSet', name: `${id}-predictor-default-00001-7f8b9` }] 
-          },
-        ])
-
-        setLoading(false)
-      }, 500)
-
-    } catch (err: unknown) {
-      console.error('Fetch error:', err)
-      setError('Pod 정보를 불러오는 중 오류가 발생했습니다.')
+      setLoading(false)
+    } catch (err) {
+      console.error('[ISVCDetail] Fetch Error:', err)
+      setError('서비스 상세 정보를 가져오는데 실패했습니다.')
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    fetchPods()
+    fetchDetailData()
   }, [id, namespace])
 
+  const getAge = (createdAt: string) => {
+    const created = new Date(createdAt)
+    const diff = Date.now() - created.getTime()
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+    const hours = Math.floor((diff / (1000 * 60 * 60)) % 24)
+    if (days > 0) return `${days}d ${hours}h`
+    return `${hours}h`
+  }
+
+  const podColors = ['#3b82f6', '#10b881', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4']
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-10">
       {/* 상단 네비게이션 및 헤더 */}
       <div className="flex flex-col gap-4">
-        <Link
-          href="/dashboard/serving"
-          className="text-muted-foreground hover:text-foreground flex items-center text-sm transition-colors"
-        >
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          목록으로 돌아가기
+        <Link href="/dashboard/serving" className="text-muted-foreground hover:text-foreground flex items-center text-sm transition-colors">
+          <ArrowLeft className="mr-2 h-4 w-4" /> 목록으로 돌아가기
         </Link>
         <div className="flex items-center justify-between">
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-bold tracking-tight">{id}</h1>
-              <Badge variant="outline" className="text-xs font-normal">
-                {namespace}
-              </Badge>
+              <Badge variant="outline" className="text-xs font-normal">{namespace}</Badge>
             </div>
-            <p className="text-muted-foreground mt-1 text-sm">
-              InferenceService 상세 정보 및 소속 Pod 현황
-            </p>
+            <p className="text-muted-foreground mt-1 text-sm">InferenceService 상세 정보 및 소속 Pod 현황</p>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={fetchPods}
-            disabled={loading}
-          >
-            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-            새로고침
+          <Button variant="outline" size="sm" onClick={fetchDetailData} disabled={loading}>
+            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> 새로고침
           </Button>
         </div>
       </div>
 
       {/* 요약 정보 카드 */}
       <div className="grid gap-4 md:grid-cols-4">
-        <Card>
+        <Card className="border-l-4 border-l-blue-500">
           <CardHeader className="py-4">
-            <CardTitle className="text-muted-foreground text-xs font-medium uppercase">
-              서빙 엔진
-            </CardTitle>
+            <CardTitle className="text-muted-foreground text-[10px] font-bold uppercase tracking-widest">서빙 엔진</CardTitle>
             <div className="mt-1 flex items-center gap-1.5 text-xl font-bold text-blue-600">
-              <Activity className="h-5 w-5" />
-              TEI (v1.2)
+              <Activity className="h-5 w-5" /> {loading ? '...' : engineInfo.name}
             </div>
           </CardHeader>
         </Card>
-        <Card className="md:col-span-2">
+        <Card className="md:col-span-2 border-l-4 border-l-slate-400">
           <CardHeader className="py-4">
-            <CardTitle className="text-muted-foreground text-xs font-medium uppercase">
-              Container Image
-            </CardTitle>
-            <div className="mt-1 flex items-center gap-2 font-mono text-sm font-medium overflow-hidden">
+            <CardTitle className="text-muted-foreground text-[10px] font-bold uppercase tracking-widest">Container Image</CardTitle>
+            <div className="mt-1 flex items-center gap-2 font-mono text-xs font-medium overflow-hidden">
               <Box className="h-4 w-4 shrink-0 text-slate-500" />
-              <span className="truncate">ghcr.io/huggingface/text-embeddings-inference:1.2</span>
+              <span className="truncate text-slate-600" title={engineInfo.image}>{loading ? '...' : engineInfo.image}</span>
             </div>
           </CardHeader>
         </Card>
-        <Card>
+        <Card className="border-l-4 border-l-emerald-500">
           <CardHeader className="py-4">
-            <CardTitle className="text-muted-foreground text-xs font-medium uppercase">
-              가동 중 / 총 Pod
-            </CardTitle>
+            <CardTitle className="text-muted-foreground text-[10px] font-bold uppercase tracking-widest">가동 중 / 총 Pod</CardTitle>
             <div className="mt-1 text-2xl font-bold">
-              <span className="text-emerald-500">{pods.filter(p => p.status === 'Running').length}</span>
+              <span className="text-emerald-500">{pods.filter(p => p.status === 'Running' || p.status === 'Succeeded').length}</span>
               <span className="text-muted-foreground mx-1 text-lg">/</span>
               <span>{pods.length}</span>
             </div>
@@ -251,25 +180,19 @@ export default function ISVCDetailPage() {
       </div>
 
       {/* 배포 구조도 */}
-      <Card>
+      <Card className="shadow-sm border-none ring-1 ring-border">
         <CardHeader>
           <CardTitle className="text-lg">배포 구조도 (Deployment Tree)</CardTitle>
-          <CardDescription>
-            Argo CD 리소스 계층 구조를 기반으로 한 배포 관계 시각화입니다.
-          </CardDescription>
+          <CardDescription>Argo CD 리소스 계층 구조를 기반으로 한 배포 관계 시각화입니다.</CardDescription>
         </CardHeader>
-        <CardContent>
-          <ResourceTree nodes={treeNodes} />
-        </CardContent>
+        <CardContent><ResourceTree nodes={treeNodes} /></CardContent>
       </Card>
 
       {/* Pod 리스트 테이블 */}
-      <Card>
+      <Card className="shadow-sm border-none ring-1 ring-border">
         <CardHeader>
           <CardTitle className="text-lg">소속 Pod 리스트</CardTitle>
-          <CardDescription>
-            해당 InferenceService에 의해 관리되는 실시간 Pod 목록입니다.
-          </CardDescription>
+          <CardDescription>해당 InferenceService에 의해 관리되는 실시간 Pod 목록입니다.</CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
@@ -279,7 +202,7 @@ export default function ISVCDetailPage() {
                 <TableHead>Status</TableHead>
                 <TableHead>Pod IP</TableHead>
                 <TableHead>Node</TableHead>
-                <TableHead>Restarts</TableHead>
+                <TableHead className="text-center">Restarts</TableHead>
                 <TableHead>Age</TableHead>
               </TableRow>
             </TableHeader>
@@ -296,50 +219,25 @@ export default function ISVCDetailPage() {
                   </TableRow>
                 ))
               ) : pods.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center">
-                    실행 중인 Pod이 없습니다.
-                  </TableCell>
-                </TableRow>
+                <TableRow><TableCell colSpan={6} className="h-24 text-center">실행 중인 Pod이 없습니다.</TableCell></TableRow>
               ) : (
                 pods.map(pod => (
                   <TableRow key={pod.name}>
-                    <TableCell className="font-mono text-xs font-medium">
-                      {pod.name}
-                    </TableCell>
+                    <TableCell className="font-mono text-xs font-medium">{pod.name}</TableCell>
                     <TableCell>
-                      <Badge
-                        variant={pod.status === 'Running' ? 'secondary' : 'destructive'}
-                        className={pod.status === 'Running' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' : ''}
-                      >
+                      <Badge variant={pod.status === 'Running' ? 'secondary' : 'destructive'} className={pod.status === 'Running' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' : ''}>
                         {pod.status}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-muted-foreground text-xs">
-                      {pod.podIp}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2 text-sm">
-                        <Server className="text-muted-foreground h-3.5 w-3.5" />
-                        {pod.node}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-center text-sm">
-                      {pod.restarts}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-sm">
-                      {pod.age}
-                    </TableCell>
+                    <TableCell className="text-muted-foreground text-xs">{pod.podIp}</TableCell>
+                    <TableCell><div className="flex items-center gap-2 text-sm"><Server className="text-muted-foreground h-3.5 w-3.5" />{pod.node}</div></TableCell>
+                    <TableCell className="text-center text-sm">{pod.restarts}</TableCell>
+                    <TableCell className="text-muted-foreground text-sm">{getAge(pod.age)}</TableCell>
                   </TableRow>
                 ))
               )}
             </TableBody>
           </Table>
-          {error && (
-            <div className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-600">
-              {error}
-            </div>
-          )}
         </CardContent>
       </Card>
 
@@ -347,196 +245,91 @@ export default function ISVCDetailPage() {
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between px-1">
           <h2 className="text-lg font-semibold">에러 분석 (Error Analysis)</h2>
-          <div className="flex items-center gap-4 text-xs">
-            <div className="flex items-center gap-1.5">
-              <div className="h-2.5 w-2.5 rounded-full bg-[#3b82f6]" />
-              <span className="text-muted-foreground">{pods[0]?.name ? `${pods[0].name.slice(-5)}...` : 'Pod 1'}</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="h-2.5 w-2.5 rounded-full bg-[#10b981]" />
-              <span className="text-muted-foreground">{pods[1]?.name ? `${pods[1].name.slice(-5)}...` : 'Pod 2'}</span>
-            </div>
+          <div className="flex items-center gap-3 text-xs overflow-auto max-w-[70%] no-scrollbar">
+            {pods.map((p, i) => (
+              <div key={p.name} className="flex items-center gap-1.5 shrink-0">
+                <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: podColors[i % podColors.length] }} />
+                <span className="text-muted-foreground font-mono">{p.name.split('-').slice(-1)}</span>
+              </div>
+            ))}
           </div>
         </div>
         
         <div className="grid gap-4 md:grid-cols-3">
           {/* 413 Errors */}
-          <Card>
+          <Card className="shadow-sm border-none ring-1 ring-border">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold">413 (Payload Too Large)</CardTitle>
+              <CardTitle className="text-[10px] font-bold uppercase tracking-tight text-muted-foreground">413 (Payload Too Large)</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="h-[150px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={[
-                      { time: '14:21', pod1: 0, pod2: 0 },
-                      { time: '14:22', pod1: 1, pod2: 0 },
-                      { time: '14:23', pod1: 0, pod2: 0 },
-                      { time: '14:24', pod1: 2, pod2: 1 },
-                      { time: '14:25', pod1: 0, pod2: 0 },
-                      { time: '14:26', pod1: 1, pod2: 0 },
-                      { time: '14:27', pod1: 0, pod2: 1 },
-                      { time: '14:28', pod1: 0, pod2: 0 },
-                      { time: '14:29', pod1: 1, pod2: 0 },
-                      { time: '14:30', pod1: 0, pod2: 0 },
-                    ]}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                    <XAxis 
-                      dataKey="time" 
-                      fontSize={10} 
-                      tick={{ fill: 'currentColor' }}
-                      className="text-muted-foreground"
-                      tickLine={{ stroke: 'hsl(var(--border))' }} 
-                      axisLine={{ stroke: 'hsl(var(--border))' }}
-                      interval={8}
-                    />
-                    <YAxis 
-                      fontSize={10} 
-                      tick={{ fill: 'currentColor' }}
-                      className="text-muted-foreground"
-                      tickLine={{ stroke: 'hsl(var(--border))' }} 
-                      axisLine={{ stroke: 'hsl(var(--border))' }} 
-                    />
-                    <Tooltip contentStyle={{ 
-                      backgroundColor: 'hsl(var(--popover))',
-                      color: 'hsl(var(--popover-foreground))',
-                      border: '1px solid hsl(var(--border))',
-                      fontSize: '12px' 
-                    }} />
-                    <Bar name="Pod 1" dataKey="pod1" stackId="a" fill="#3b82f6" />
-                    <Bar name="Pod 2" dataKey="pod2" stackId="a" fill="#10b981" />
-                  </BarChart>
-                </ResponsiveContainer>
+              <div className="h-[180px] w-full">
+                {!errorMetrics.error413 || errorMetrics.error413.length === 0 ? (
+                  <div className="h-full flex items-center justify-center text-[9px] font-bold text-muted-foreground uppercase tracking-widest border border-dashed rounded-lg">No 413 Errors</div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={errorMetrics.error413}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                      <XAxis dataKey="time" fontSize={9} tick={{ fill: 'currentColor' }} className="text-muted-foreground" interval={5} />
+                      <YAxis fontSize={9} tick={{ fill: 'currentColor' }} className="text-muted-foreground" />
+                      <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '10px' }} />
+                      {pods.map((p, i) => (
+                        <Bar key={p.name} name={p.name.slice(-8)} dataKey={p.name} stackId="a" fill={podColors[i % podColors.length]} />
+                      ))}
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
               </div>
             </CardContent>
           </Card>
 
           {/* 429 Errors */}
-          <Card>
+          <Card className="shadow-sm border-none ring-1 ring-border">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold">429 (Too Many Requests)</CardTitle>
+              <CardTitle className="text-[10px] font-bold uppercase tracking-tight text-muted-foreground">429 (Too Many Requests)</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="h-[150px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={[
-                      { time: '14:21', pod1: 2, pod2: 1 },
-                      { time: '14:22', pod1: 3, pod2: 2 },
-                      { time: '14:23', pod1: 5, pod2: 4 },
-                      { time: '14:24', pod1: 8, pod2: 6 },
-                      { time: '14:25', pod1: 12, pod2: 10 },
-                      { time: '14:26', pod1: 15, pod2: 12 },
-                      { time: '14:27', pod1: 10, pod2: 8 },
-                      { time: '14:28', pod1: 8, pod2: 6 },
-                      { time: '14:29', pod1: 5, pod2: 3 },
-                      { time: '14:30', pod1: 3, pod2: 2 },
-                    ]}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                    <XAxis 
-                      dataKey="time" 
-                      fontSize={10} 
-                      tick={{ fill: 'currentColor' }}
-                      className="text-muted-foreground"
-                      tickLine={{ stroke: 'hsl(var(--border))' }} 
-                      axisLine={{ stroke: 'hsl(var(--border))' }}
-                      interval={8}
-                    />
-                    <YAxis 
-                      fontSize={10} 
-                      tick={{ fill: 'currentColor' }}
-                      className="text-muted-foreground"
-                      tickLine={{ stroke: 'hsl(var(--border))' }} 
-                      axisLine={{ stroke: 'hsl(var(--border))' }} 
-                    />
-                    <Tooltip contentStyle={{ 
-                      backgroundColor: 'hsl(var(--popover))',
-                      color: 'hsl(var(--popover-foreground))',
-                      border: '1px solid hsl(var(--border))',
-                      fontSize: '12px' 
-                    }} />
-                    <Bar name="Pod 1" dataKey="pod1" stackId="a" fill="#3b82f6" />
-                    <Bar name="Pod 2" dataKey="pod2" stackId="a" fill="#10b981" />
-                  </BarChart>
-                </ResponsiveContainer>
+              <div className="h-[180px] w-full">
+                {!errorMetrics.error429 || errorMetrics.error429.length === 0 ? (
+                  <div className="h-full flex items-center justify-center text-[9px] font-bold text-muted-foreground uppercase tracking-widest border border-dashed rounded-lg">No 429 Errors</div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={errorMetrics.error429}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                      <XAxis dataKey="time" fontSize={9} tick={{ fill: 'currentColor' }} className="text-muted-foreground" interval={5} />
+                      <YAxis fontSize={9} tick={{ fill: 'currentColor' }} className="text-muted-foreground" />
+                      <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '10px' }} />
+                      {pods.map((p, i) => (
+                        <Bar key={p.name} name={p.name.slice(-8)} dataKey={p.name} stackId="a" fill={podColors[i % podColors.length]} />
+                      ))}
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
               </div>
             </CardContent>
           </Card>
 
-          {/* Other Errors */}
-          <Card>
+          {/* Other Errors (5xx) */}
+          <Card className="shadow-sm border-none ring-1 ring-border">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold">Other Errors</CardTitle>
+              <CardTitle className="text-[10px] font-bold uppercase tracking-tight text-muted-foreground">Other Errors (5xx)</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="h-[150px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={[
-                      { time: '14:21', pod1: 0, pod2: 1, p1_details: {}, p2_details: { '500': 1 } },
-                      { time: '14:22', pod1: 1, pod2: 0, p1_details: { '503': 1 }, p2_details: {} },
-                      { time: '14:23', pod1: 0, pod2: 1, p1_details: {}, p2_details: { '500': 1 } },
-                      { time: '14:24', pod1: 2, pod2: 1, p1_details: { '500': 1, '502': 1 }, p2_details: { '503': 1 } },
-                      { time: '14:25', pod1: 1, pod2: 0, p1_details: { '500': 1 }, p2_details: {} },
-                      { time: '14:26', pod1: 0, pod2: 1, p1_details: {}, p2_details: { '502': 1 } },
-                      { time: '14:27', pod1: 2, pod2: 1, p1_details: { '500': 2 }, p2_details: { '500': 1 } },
-                      { time: '14:28', pod1: 1, pod2: 0, p1_details: { '503': 1 }, p2_details: {} },
-                      { time: '14:29', pod1: 0, pod2: 1, p1_details: {}, p2_details: { '500': 1 } },
-                      { time: '14:30', pod1: 1, pod2: 1, p1_details: { '500': 1 }, p2_details: { '503': 1 } },
-                    ]}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                    <XAxis 
-                      dataKey="time" 
-                      fontSize={10} 
-                      tick={{ fill: 'currentColor' }}
-                      className="text-muted-foreground"
-                      tickLine={{ stroke: 'hsl(var(--border))' }} 
-                      axisLine={{ stroke: 'hsl(var(--border))' }}
-                      interval={8}
-                    />
-                    <YAxis 
-                      fontSize={10} 
-                      tick={{ fill: 'currentColor' }}
-                      className="text-muted-foreground"
-                      tickLine={{ stroke: 'hsl(var(--border))' }} 
-                      axisLine={{ stroke: 'hsl(var(--border))' }} 
-                    />
-                    <Tooltip 
-                      content={({ active, payload }) => {
-                        if (active && payload && payload.length) {
-                          return (
-                            <div className="rounded-lg border bg-background p-2 shadow-sm">
-                              <p className="text-[10px] font-medium text-muted-foreground mb-1">{payload[0].payload.time}</p>
-                              {payload.map((entry: any) => {
-                                const details = entry.dataKey === 'pod1' ? entry.payload.p1_details : entry.payload.p2_details;
-                                if (entry.value === 0) return null;
-                                return (
-                                  <div key={entry.dataKey} className="mb-1 last:mb-0">
-                                    <p className="text-xs font-bold" style={{ color: entry.fill }}>
-                                      {entry.name}
-                                    </p>
-                                    {Object.entries(details).map(([type, count]) => (
-                                      <p key={type} className="text-[10px] ml-1">
-                                        Error {type}: {count as number}건
-                                      </p>
-                                    ))}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          );
-                        }
-                        return null;
-                      }}
-                    />
-                    <Bar name="Pod 1" dataKey="pod1" stackId="a" fill="#3b82f6" />
-                    <Bar name="Pod 2" dataKey="pod2" stackId="a" fill="#10b981" />
-                  </BarChart>
-                </ResponsiveContainer>
+              <div className="h-[180px] w-full">
+                {!errorMetrics.error5xx || errorMetrics.error5xx.length === 0 ? (
+                  <div className="h-full flex items-center justify-center text-[9px] font-bold text-muted-foreground uppercase tracking-widest border border-dashed rounded-lg">No 5xx Errors</div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={errorMetrics.error5xx}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                      <XAxis dataKey="time" fontSize={9} tick={{ fill: 'currentColor' }} className="text-muted-foreground" interval={5} />
+                      <YAxis fontSize={9} tick={{ fill: 'currentColor' }} className="text-muted-foreground" />
+                      <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '10px' }} />
+                      {pods.map((p, i) => (
+                        <Bar key={p.name} name={p.name.slice(-8)} dataKey={p.name} stackId="a" fill={podColors[i % podColors.length]} />
+                      ))}
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -544,13 +337,11 @@ export default function ISVCDetailPage() {
       </div>
 
       {/* 자원 사용량 시계열 차트 */}
-      <Card>
+      <Card className="shadow-sm border-none ring-1 ring-border">
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <div>
             <CardTitle className="text-lg">자원 사용량 (Resource Usage)</CardTitle>
-            <CardDescription>
-              Pod별 실시간 시스템 자원 사용률 변화입니다.
-            </CardDescription>
+            <CardDescription>Pod별 실시간 시스템 자원 사용률 변화입니다.</CardDescription>
           </div>
           <div className="flex bg-muted p-1 rounded-md">
             {[
@@ -563,9 +354,7 @@ export default function ISVCDetailPage() {
                 key={tab.id}
                 onClick={() => setActiveResourceTab(tab.id as any)}
                 className={`px-3 py-1 text-xs font-medium rounded-sm transition-all ${
-                  activeResourceTab === tab.id 
-                    ? 'bg-background shadow-sm text-foreground' 
-                    : 'text-muted-foreground hover:text-foreground'
+                  activeResourceTab === tab.id ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
                 {tab.label}
@@ -575,329 +364,153 @@ export default function ISVCDetailPage() {
         </CardHeader>
         <CardContent>
           <div className="h-[300px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart
-                data={
-                  activeResourceTab === 'cpu' ? [
-                    { time: '14:21', pod1: 45, pod2: 38 },
-                    { time: '14:22', pod1: 52, pod2: 42 },
-                    { time: '14:23', pod1: 48, pod2: 55 },
-                    { time: '14:24', pod1: 61, pod2: 48 },
-                    { time: '14:25', pod1: 55, pod2: 52 },
-                    { time: '14:26', pod1: 68, pod2: 45 },
-                    { time: '14:27', pod1: 72, pod2: 58 },
-                    { time: '14:28', pod1: 65, pod2: 62 },
-                    { time: '14:29', pod1: 58, pod2: 65 },
-                    { time: '14:30', pod1: 62, pod2: 70 },
-                  ] : activeResourceTab === 'memory' ? [
-                    { time: '14:21', pod1: 65, pod2: 58 },
-                    { time: '14:22', pod1: 68, pod2: 60 },
-                    { time: '14:23', pod1: 66, pod2: 65 },
-                    { time: '14:24', pod1: 70, pod2: 62 },
-                    { time: '14:25', pod1: 68, pod2: 68 },
-                    { time: '14:26', pod1: 72, pod2: 65 },
-                    { time: '14:27', pod1: 75, pod2: 70 },
-                    { time: '14:28', pod1: 73, pod2: 72 },
-                    { time: '14:29', pod1: 70, pod2: 75 },
-                    { time: '14:30', pod1: 73, pod2: 78 },
-                  ] : activeResourceTab === 'gpu' ? [
-                    { time: '14:21', pod1: 82, pod2: 75 },
-                    { time: '14:22', pod1: 85, pod2: 78 },
-                    { time: '14:23', pod1: 80, pod2: 85 },
-                    { time: '14:24', pod1: 88, pod2: 82 },
-                    { time: '14:25', pod1: 85, pod2: 85 },
-                    { time: '14:26', pod1: 92, pod2: 80 },
-                    { time: '14:27', pod1: 95, pod2: 88 },
-                    { time: '14:28', pod1: 90, pod2: 92 },
-                    { time: '14:29', pod1: 85, pod2: 95 },
-                    { time: '14:30', pod1: 88, pod2: 98 },
-                  ] : [
-                    { time: '14:21', pod1: 12.4, pod2: 11.2 },
-                    { time: '14:22', pod1: 12.5, pod2: 11.5 },
-                    { time: '14:23', pod1: 12.4, pod2: 12.4 },
-                    { time: '14:24', pod1: 12.8, pod2: 11.8 },
-                    { time: '14:25', pod1: 12.6, pod2: 12.6 },
-                    { time: '14:26', pod1: 13.2, pod2: 12.2 },
-                    { time: '14:27', pod1: 13.5, pod2: 13.5 },
-                    { time: '14:28', pod1: 13.2, pod2: 14.2 },
-                    { time: '14:29', pod1: 12.8, pod2: 15.2 },
-                    { time: '14:30', pod1: 13.4, pod2: 15.8 },
-                  ]
-                }
-                margin={{ top: 5, right: 30, left: 0, bottom: 5 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                <XAxis
-                  dataKey="time"
-                  tick={{ fill: 'currentColor' }}
-                  className="text-muted-foreground"
-                  fontSize={12}
-                  tickLine={{ stroke: 'hsl(var(--border))' }}
-                  axisLine={{ stroke: 'hsl(var(--border))' }}
-                  interval={8}
-                />
-                <YAxis
-                  tick={{ fill: 'currentColor' }}
-                  className="text-muted-foreground"
-                  fontSize={12}
-                  tickLine={{ stroke: 'hsl(var(--border))' }}
-                  axisLine={{ stroke: 'hsl(var(--border))' }}
-                  tickFormatter={(value) => `${value}${['cpu', 'memory', 'gpu'].includes(activeResourceTab) ? '%' : 'Gi'}`}
-                />
-                <Tooltip
-                  contentStyle={{ 
-                    backgroundColor: 'hsl(var(--popover))',
-                    color: 'hsl(var(--popover-foreground))',
-                    border: '1px solid hsl(var(--border))',
-                    borderRadius: '8px',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)' 
-                  }}
-                />
-                <Legend iconType="circle" />
-                <Line
-                  name={pods[0]?.name ? `${pods[0].name.slice(-5)}...` : 'Pod 1'}
-                  type="monotone"
-                  dataKey="pod1"
-                  stroke="#3b82f6"
-                  strokeWidth={2}
-                  dot={false}
-                  activeDot={{ r: 4 }}
-                />
-                <Line
-                  name={pods[1]?.name ? `${pods[1].name.slice(-5)}...` : 'Pod 2'}
-                  type="monotone"
-                  dataKey="pod2"
-                  stroke="#10b981"
-                  strokeWidth={2}
-                  dot={false}
-                  activeDot={{ r: 4 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
+            {['gpu', 'gpu_mem'].includes(activeResourceTab) && 
+             (activeResourceTab === 'gpu' ? resourceMetrics.gpu.length === 0 : resourceMetrics.gpuMem.length === 0) ? (
+              <div className="h-full flex flex-col items-center justify-center gap-3 text-muted-foreground bg-muted/10 rounded-xl border border-dashed">
+                <Activity size={32} className="opacity-20" />
+                <div className="text-center">
+                  <p className="text-sm font-bold uppercase tracking-widest">No GPU Detected</p>
+                  <p className="text-[10px] font-medium mt-1">This service is likely running on CPU only.</p>
+                </div>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart
+                  data={
+                    activeResourceTab === 'cpu' ? resourceMetrics.cpu :
+                    activeResourceTab === 'memory' ? resourceMetrics.memory :
+                    activeResourceTab === 'gpu' ? resourceMetrics.gpu :
+                    resourceMetrics.gpuMem
+                  }
+                  margin={{ top: 5, right: 30, left: 0, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                  <XAxis dataKey="time" tick={{ fill: 'currentColor' }} className="text-muted-foreground" fontSize={12} tickLine={{ stroke: 'hsl(var(--border))' }} axisLine={{ stroke: 'hsl(var(--border))' }} interval={4} />
+                  <YAxis
+                    tick={{ fill: 'currentColor' }}
+                    className="text-muted-foreground"
+                    fontSize={12}
+                    tickLine={{ stroke: 'hsl(var(--border))' }}
+                    axisLine={{ stroke: 'hsl(var(--border))' }}
+                    domain={[0, 'auto']}
+                    tickFormatter={(value) => `${value}%`}
+                  />
+
+                  <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--popover))', color: 'hsl(var(--popover-foreground))', border: '1px solid hsl(var(--border))', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                  <Legend iconType="circle" />
+                  {pods.map((p, i) => (
+                    <Line key={p.name} name={p.name.slice(-8)} type="linear" dataKey={p.name} stroke={podColors[i % podColors.length]} strokeWidth={1.5} dot={false} activeDot={{ r: 3 }} />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </CardContent>
       </Card>
 
-      {/* Pod별 RPS 시계열 차트 */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Pod별 초당 요청수 (RPS)</CardTitle>
-          <CardDescription>
-            최근 30분간 각 Pod으로 유입된 트래픽 변화량입니다.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="h-[300px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart
-                data={[
-                  { time: '14:00', pod1: 45, pod2: 38 },
-                  { time: '14:05', pod1: 52, pod2: 42 },
-                  { time: '14:10', pod1: 48, pod2: 55 },
-                  { time: '14:15', pod1: 61, pod2: 48 },
-                  { time: '14:20', pod1: 55, pod2: 52 },
-                  { time: '14:25', pod1: 68, pod2: 45 },
-                  { time: '14:30', pod1: 72, pod2: 58 },
-                ]}
-                margin={{ top: 5, right: 30, left: 0, bottom: 5 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                <XAxis
-                  dataKey="time"
-                  tick={{ fill: 'currentColor' }}
-                  className="text-muted-foreground"
-                  fontSize={12}
-                  tickLine={{ stroke: 'hsl(var(--border))' }}
-                  axisLine={{ stroke: 'hsl(var(--border))' }}
-                />
-                <YAxis
-                  tick={{ fill: 'currentColor' }}
-                  className="text-muted-foreground"
-                  fontSize={12}
-                  tickLine={{ stroke: 'hsl(var(--border))' }}
-                  axisLine={{ stroke: 'hsl(var(--border))' }}
-                  tickFormatter={(value) => `${value}`}
-                />
-                <Tooltip
-                  contentStyle={{ 
-                    backgroundColor: 'hsl(var(--popover))',
-                    color: 'hsl(var(--popover-foreground))',
-                    border: '1px solid hsl(var(--border))',
-                    borderRadius: '8px',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)' 
-                  }}
-                />
-                <Legend iconType="circle" />
-                <Line
-                  name={pods[0]?.name ? `${pods[0].name.slice(-5)}...` : 'Pod 1'}
-                  type="monotone"
-                  dataKey="pod1"
-                  stroke="#3b82f6"
-                  strokeWidth={2}
-                  dot={false}
-                  activeDot={{ r: 4 }}
-                />
-                <Line
-                  name={pods[1]?.name ? `${pods[1].name.slice(-5)}...` : 'Pod 2'}
-                  type="monotone"
-                  dataKey="pod2"
-                  stroke="#10b981"
-                  strokeWidth={2}
-                  dot={false}
-                  activeDot={{ r: 4 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </CardContent>
-      </Card>
+      {/* 실시간 트래픽 분석 섹션 */}
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* Pod별 RPS 시계열 차트 */}
+        <Card className="shadow-sm border-none ring-1 ring-border">
+          <CardHeader>
+            <CardTitle className="text-lg">Pod별 초당 요청수 (RPS)</CardTitle>
+            <CardDescription>최근 30분간 각 Pod으로 유입된 트래픽 변화량입니다.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[250px] w-full">
+              {!trafficMetrics.rps || trafficMetrics.rps.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center gap-2 text-muted-foreground bg-muted/5 rounded-xl border border-dashed">
+                  <Activity size={24} className="opacity-20" />
+                  <p className="text-[10px] font-bold uppercase tracking-widest">No Traffic Detected</p>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={trafficMetrics.rps} margin={{ top: 5, right: 30, left: 0, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                    <XAxis dataKey="time" tick={{ fill: 'currentColor' }} className="text-muted-foreground" fontSize={10} interval={4} />
+                    <YAxis tick={{ fill: 'currentColor' }} className="text-muted-foreground" fontSize={10} tickFormatter={(v) => v.toFixed(1)} domain={[0, 'auto']} />
+                    <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '11px' }} />
+                    <Legend iconType="circle" />
+                    {pods.map((p, i) => (
+                      <Line key={p.name} name={p.name.slice(-8)} type="linear" dataKey={p.name} stroke={podColors[i % podColors.length]} strokeWidth={1.5} dot={false} />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 레이턴시 시계열 차트 */}
+        <Card className="shadow-sm border-none ring-1 ring-border">
+          <CardHeader>
+            <CardTitle className="text-lg">Pod별 레이턴시 (P95 Latency)</CardTitle>
+            <CardDescription>최근 30분간 상위 95% 응답 속도 추이입니다. (단위: ms)</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[250px] w-full">
+              {!trafficMetrics.latency || trafficMetrics.latency.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center gap-2 text-muted-foreground bg-muted/5 rounded-xl border border-dashed">
+                  <Activity size={24} className="opacity-20" />
+                  <p className="text-[10px] font-bold uppercase tracking-widest">No Response Data</p>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={trafficMetrics.latency} margin={{ top: 5, right: 30, left: 0, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                    <XAxis dataKey="time" tick={{ fill: 'currentColor' }} className="text-muted-foreground" fontSize={10} interval={4} />
+                    <YAxis tick={{ fill: 'currentColor' }} className="text-muted-foreground" fontSize={10} tickFormatter={(v) => `${v}ms`} domain={[0, 'auto']} />
+                    <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '11px' }} />
+                    <Legend iconType="circle" />
+                    {pods.map((p, i) => (
+                      <Line key={p.name} name={p.name.slice(-8)} type="linear" dataKey={p.name} stroke={podColors[i % podColors.length]} strokeWidth={1.5} dot={false} />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* 큐 대기수 시계열 차트 */}
-      <Card>
+      <Card className="shadow-sm border-none ring-1 ring-border">
         <CardHeader>
           <CardTitle className="text-lg">큐 대기수 (Queue Size)</CardTitle>
-          <CardDescription>
-            서빙 엔진의 추론 대기열에 쌓여있는 요청 수 추이입니다.
-          </CardDescription>
+          <CardDescription>서빙 엔진의 추론 대기열에 쌓여있는 요청 수 추이입니다.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="h-[300px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart
-                data={[
-                  { time: '14:00', pod1: 2, pod2: 1 },
-                  { time: '14:05', pod1: 5, pod2: 3 },
-                  { time: '14:10', pod1: 12, pod2: 8 },
-                  { time: '14:15', pod1: 8, pod2: 6 },
-                  { time: '14:20', pod1: 15, pod2: 10 },
-                  { time: '14:25', pod1: 24, pod2: 18 },
-                  { time: '14:30', pod1: 18, pod2: 12 },
-                ]}
-                margin={{ top: 5, right: 30, left: 0, bottom: 5 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                <XAxis
-                  dataKey="time"
-                  tick={{ fill: 'currentColor' }}
-                  className="text-muted-foreground"
-                  fontSize={12}
-                  tickLine={{ stroke: 'hsl(var(--border))' }}
-                  axisLine={{ stroke: 'hsl(var(--border))' }}
-                />
-                <YAxis
-                  tick={{ fill: 'currentColor' }}
-                  className="text-muted-foreground"
-                  fontSize={12}
-                  tickLine={{ stroke: 'hsl(var(--border))' }}
-                  axisLine={{ stroke: 'hsl(var(--border))' }}
-                />
-                <Tooltip
-                  contentStyle={{ 
-                    backgroundColor: 'hsl(var(--popover))',
-                    color: 'hsl(var(--popover-foreground))',
-                    border: '1px solid hsl(var(--border))',
-                    borderRadius: '8px',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)' 
-                  }}
-                />
-                <Legend iconType="circle" />
-                <Line
-                  name={pods[0]?.name ? `${pods[0].name.slice(-5)}...` : 'Pod 1'}
-                  type="monotone"
-                  dataKey="pod1"
-                  stroke="#3b82f6"
-                  strokeWidth={2}
-                  dot={false}
-                  activeDot={{ r: 4 }}
-                />
-                <Line
-                  name={pods[1]?.name ? `${pods[1].name.slice(-5)}...` : 'Pod 2'}
-                  type="monotone"
-                  dataKey="pod2"
-                  stroke="#10b981"
-                  strokeWidth={2}
-                  dot={false}
-                  activeDot={{ r: 4 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
+            {!engineInfo.name.includes('TEI') ? (
+              <div className="h-full flex flex-col items-center justify-center gap-3 text-muted-foreground bg-muted/10 rounded-xl border border-dashed">
+                <Activity size={32} className="opacity-20" />
+                <div className="text-center">
+                  <p className="text-sm font-bold uppercase tracking-widest">No Queue Metrics</p>
+                  <p className="text-[10px] font-medium mt-1">Queue analysis is optimized for Text Embeddings Inference (TEI).</p>
+                </div>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart
+                  data={trafficMetrics.queue}
+                  margin={{ top: 5, right: 30, left: 0, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                  <XAxis dataKey="time" tick={{ fill: 'currentColor' }} className="text-muted-foreground" fontSize={12} tickLine={{ stroke: 'hsl(var(--border))' }} axisLine={{ stroke: 'hsl(var(--border))' }} interval={4} />
+                  <YAxis tick={{ fill: 'currentColor' }} className="text-muted-foreground" fontSize={12} tickLine={{ stroke: 'hsl(var(--border))' }} axisLine={{ stroke: 'hsl(var(--border))' }} domain={[0, 'auto']} />
+                  <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: '8px' }} />
+                  <Legend iconType="circle" />
+                  {pods.map((p, i) => (
+                    <Line key={p.name} name={p.name.slice(-8)} type="linear" dataKey={p.name} stroke={podColors[i % podColors.length]} strokeWidth={2} dot={false} />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </CardContent>
       </Card>
-
-      {/* 레이턴시 시계열 차트 */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Pod별 레이턴시 (P95 Latency)</CardTitle>
-          <CardDescription>
-            최근 30분간 각 Pod의 상위 95% 응답 속도 추이입니다. (가장 느린 5% 제외, 단위: ms)
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="h-[300px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart
-                data={[
-                  { time: '14:00', pod1: 120, pod2: 115 },
-                  { time: '14:05', pod1: 135, pod2: 128 },
-                  { time: '14:10', pod1: 158, pod2: 142 },
-                  { time: '14:15', pod1: 142, pod2: 135 },
-                  { time: '14:20', pod1: 165, pod2: 158 },
-                  { time: '14:25', pod1: 182, pod2: 175 },
-                  { time: '14:30', pod1: 170, pod2: 162 },
-                ]}
-                margin={{ top: 5, right: 30, left: 0, bottom: 5 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                <XAxis
-                  dataKey="time"
-                  tick={{ fill: 'currentColor' }}
-                  className="text-muted-foreground"
-                  fontSize={12}
-                  tickLine={{ stroke: 'hsl(var(--border))' }}
-                  axisLine={{ stroke: 'hsl(var(--border))' }}
-                />
-                <YAxis
-                  tick={{ fill: 'currentColor' }}
-                  className="text-muted-foreground"
-                  fontSize={12}
-                  tickLine={{ stroke: 'hsl(var(--border))' }}
-                  axisLine={{ stroke: 'hsl(var(--border))' }}
-                  tickFormatter={ (value) => `${value}ms` }
-                />
-                <Tooltip
-                  contentStyle={{ 
-                    backgroundColor: 'hsl(var(--popover))',
-                    color: 'hsl(var(--popover-foreground))',
-                    border: '1px solid hsl(var(--border))',
-                    borderRadius: '8px',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)' 
-                  }}
-                />
-                <Legend iconType="circle" />
-                <Line
-                  name={pods[0]?.name ? `${pods[0].name.slice(-5)}...` : 'Pod 1'}
-                  type="monotone"
-                  dataKey="pod1"
-                  stroke="#3b82f6"
-                  strokeWidth={2}
-                  dot={false}
-                  activeDot={{ r: 4 }}
-                />
-                <Line
-                  name={pods[1]?.name ? `${pods[1].name.slice(-5)}...` : 'Pod 2'}
-                  type="monotone"
-                  dataKey="pod2"
-                  stroke="#10b981"
-                  strokeWidth={2}
-                  dot={false}
-                  activeDot={{ r: 4 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </CardContent>
-      </Card>
+      
+      {error && <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-600 font-bold flex items-center gap-2"><XCircle className="size-4" />{error}</div>}
     </div>
   )
 }

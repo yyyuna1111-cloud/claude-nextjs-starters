@@ -353,26 +353,30 @@ const ACTIVITY_FILTERS: { key: ActivityFilter; label: string }[] = [
 function ServingStatusBadge({
   status,
 }: {
-  status: 'UP' | 'DOWN' | 'DEGRADED'
+  status: 'Ready' | 'Not Ready' | 'Out of Sync' | 'Degraded'
 }) {
   const config = {
-    UP: {
-      label: 'UP',
+    Ready: {
+      label: 'Ready',
       className: 'bg-green-500/10 text-green-600 border-green-500/20',
     },
-    DOWN: {
-      label: 'DOWN',
+    'Not Ready': {
+      label: 'Not Ready',
       className: 'bg-red-500/10 text-red-600 border-red-500/20',
     },
-    DEGRADED: {
-      label: 'DEGRADED',
+    'Out of Sync': {
+      label: 'Out of Sync',
+      className: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
+    },
+    Degraded: {
+      label: 'Degraded',
       className: 'bg-orange-500/10 text-orange-600 border-orange-500/20',
     },
   }
-  const { label, className } = config[status]
+  const { label, className } = config[status] || config['Not Ready']
   return (
     <span
-      className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${className}`}
+      className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${className}`}
     >
       {label}
     </span>
@@ -450,6 +454,7 @@ export default function DashboardPage() {
     gpu: 0,
     unhealthyPods: 0,
     totalServices: 0,
+    unhealthyIsvcs: [] as any[],
     highMemoryNodes: [] as { node: string; used: number; free: number; type: string }[],
     unhealthyNamespaces: [] as { ns: string; running: number; pending: number; failed: number; crash: number; labels: string[] }[],
     loading: true
@@ -511,12 +516,23 @@ export default function DashboardPage() {
         .filter(n => n.pending > 0 || n.failed > 0 || n.crash > 0)
         .sort((a, b) => (b.pending + b.failed + b.crash) - (a.pending + a.failed + a.crash))
 
+      // Not Ready 이거나 Out of Sync 인 ISVC만 필터링
+      const isvcs = isvcData.isvcs || []
+      const unhealthyIsvcs = isvcs
+        .filter((svc: any) => svc.status === 'NotReady' || svc.syncStatus === 'OutOfSync')
+        .map((svc: any) => ({
+          name: svc.name,
+          namespace: svc.namespace,
+          status: svc.status === 'NotReady' ? 'Not Ready' : 'Out of Sync'
+        }))
+
       setMetrics({
         cpu: avgCpu,
         memory: avgMem,
         gpu: gpuAllocated,
         unhealthyPods: unhealthyCount,
-        totalServices: isvcData.isvcs?.length || 0,
+        totalServices: isvcs.length,
+        unhealthyIsvcs: unhealthyIsvcs,
         highMemoryNodes: highMemNodes,
         unhealthyNamespaces: unhealthyNamespaces,
         loading: false
@@ -675,8 +691,65 @@ export default function DashboardPage() {
       {/* ─── 하단: 운영 영역 (왼쪽: 서빙→학습→평가 / 오른쪽: 노드메모리+Pod+최근활동) ─── */}
       <section aria-label="운영 영역">
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {/* ── 왼쪽: 학습 → 평가 → 서빙 세로 스택 ── */}
+          {/* ── 왼쪽: 서빙 → 학습 → 평가 세로 스택 ── */}
           <div className="flex flex-col gap-4">
+            {/* 서빙 현황 */}
+            <Card className={metrics.unhealthyIsvcs.length > 0 ? 'border-red-500/50 bg-red-500/[0.02]' : ''}>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className={`text-sm font-semibold ${metrics.unhealthyIsvcs.length > 0 ? 'text-red-500' : ''}`}>
+                      서빙 현황 (이슈 탐지)
+                    </CardTitle>
+                    <CardDescription className="text-xs">
+                      {metrics.unhealthyIsvcs.length > 0 
+                        ? `현재 ${metrics.unhealthyIsvcs.length}개의 서비스에 이상이 감지되었습니다.` 
+                        : '모든 서비스가 정상적으로 운영 중입니다.'}
+                    </CardDescription>
+                  </div>
+                  <Link
+                    href="/dashboard/serving"
+                    className="text-muted-foreground hover:text-foreground text-xs underline-offset-4 hover:underline"
+                  >
+                    전체 보기
+                  </Link>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {metrics.loading ? (
+                  <div className="space-y-2 py-2">
+                    <Skeleton className="h-8 w-full" />
+                    <Skeleton className="h-8 w-full" />
+                  </div>
+                ) : metrics.unhealthyIsvcs.length === 0 ? (
+                  <div className="py-6 flex flex-col items-center justify-center gap-2 border-t border-dashed rounded-xl border-emerald-500/20 bg-emerald-500/[0.01]">
+                    <CheckCircle2 className="size-6 text-emerald-500" />
+                    <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">All Services Healthy</span>
+                  </div>
+                ) : (
+                  metrics.unhealthyIsvcs.map((svc, idx) => (
+                    <div key={`${svc.namespace}-${svc.name}`}>
+                      <Link href={`/dashboard/serving/${svc.name}?ns=${svc.namespace}`} className="hover:bg-muted/50 block rounded-md transition-colors px-1">
+                        <div className="flex items-center justify-between py-1.5">
+                          <div className="flex min-w-0 flex-1 items-center gap-2">
+                            <Server className="text-muted-foreground size-3.5 shrink-0" />
+                            <div className="flex flex-col min-w-0">
+                              <span className="truncate text-sm font-medium">
+                                {svc.name}
+                              </span>
+                              <span className="text-[10px] text-muted-foreground">{svc.namespace}</span>
+                            </div>
+                          </div>
+                          <ServingStatusBadge status={svc.status} />
+                        </div>
+                      </Link>
+                      {idx < metrics.unhealthyIsvcs.length - 1 && <Separator />}
+                    </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+
             {/* 학습 현황 */}
             <Link href="/dashboard/train" className="group">
               <Card className="transition-shadow group-hover:shadow-md">
@@ -828,64 +901,6 @@ export default function DashboardPage() {
                 </CardContent>
               </Card>
             </Link>
-
-            {/* 서빙 현황 */}
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="text-sm font-semibold">
-                      서빙 현황
-                    </CardTitle>
-                    <CardDescription className="text-xs">
-                      서비스별 운영 상태 · latency / err / rps
-                    </CardDescription>
-                  </div>
-                  <Link
-                    href="/dashboard/serving"
-                    className="text-muted-foreground hover:text-foreground text-xs underline-offset-4 hover:underline"
-                  >
-                    전체 보기
-                  </Link>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {servingHealthData.map((svc, idx) => (
-                  <div key={svc.name}>
-                    <div className="flex items-center gap-3 py-1.5">
-                      <div className="flex min-w-0 flex-1 items-center gap-2">
-                        <Server className="text-muted-foreground size-3.5 shrink-0" />
-                        <span className="truncate text-sm font-medium">
-                          {svc.name}
-                        </span>
-                      </div>
-                      <ServingStatusBadge status={svc.status} />
-                      <div className="text-muted-foreground hidden items-center gap-4 text-xs sm:flex">
-                        <span>
-                          <span className="text-foreground font-medium">
-                            {svc.latency}
-                          </span>{' '}
-                          latency
-                        </span>
-                        <span>
-                          <span className="text-foreground font-medium">
-                            {svc.errorRate}
-                          </span>{' '}
-                          err
-                        </span>
-                        <span>
-                          <span className="text-foreground font-medium">
-                            {svc.rps}
-                          </span>{' '}
-                          rps
-                        </span>
-                      </div>
-                    </div>
-                    {idx < servingHealthData.length - 1 && <Separator />}
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
           </div>
 
           <div className="flex flex-col gap-4">
