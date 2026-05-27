@@ -21,7 +21,6 @@ async function queryPrometheus(query: string) {
 }
 
 export async function GET() {
-  console.log(`[K8s Nodes API] Fetching from: ${K8S_API_URL}/api/v1/nodes`)
   try {
     if (!K8S_API_URL || !K8S_TOKEN) {
       throw new Error('Kubernetes API configuration is missing')
@@ -57,39 +56,105 @@ export async function GET() {
       req.end()
     })
 
-    // Prometheus 메트릭 가져오기
-    const [cpuMetrics, memMetrics, podsPerNode] = await Promise.all([
-      queryPrometheus('100 - (avg by (node) (irate(node_cpu_seconds_total{mode="idle"}[2m])) * 100)'),
-      queryPrometheus('(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100'),
-      queryPrometheus('count(kube_pod_info) by (node)')
+    // Prometheus 메트릭 가져오기 (사용률 지표만)
+    const [cpuMetrics, memMetrics, gpuMetrics] = await Promise.all([
+      queryPrometheus('100 - (avg by (instance, node, kubernetes_node, nodename) (irate(node_cpu_seconds_total{mode="idle"}[2m])) * 100)'),
+      queryPrometheus('avg by (instance, node, kubernetes_node, nodename) (((node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes) * 100)'),
+      queryPrometheus('sum by (node, kubernetes_node, instance, nodename) (DCGM_FI_DEV_GPU_UTIL)')
     ])
 
-    const cpuMap = new Map()
-    cpuMetrics?.forEach((m: any) => cpuMap.set(m.metric.node, parseFloat(m.value[1])))
+    // 매핑 보강용 전체 Pod 목록 가져오기 및 노드별 개수 직접 집계
+    const podRes = await fetch(`${K8S_API_URL}/api/v1/pods`, {
+      headers: { Authorization: `Bearer ${K8S_TOKEN}` },
+      next: { revalidate: 0 }
+    })
+    
+    // 1. IP 매핑 테이블 및 2. 실시간 Pod 카운트 맵 생성
+    const ipMap = new Map<string, string>()
+    const nodePodCountMap = new Map<string, number>()
 
-    const memMap = new Map()
-    memMetrics?.forEach((m: any) => memMap.set(m.metric.node, parseFloat(m.value[1])))
+    // 노드 정보를 통한 기초 매핑
+    k8sData.items?.forEach((node: any) => {
+      const name = node.metadata?.name
+      node.status?.addresses?.forEach((addr: any) => {
+        if (addr.address) ipMap.set(addr.address, name)
+      })
+      ipMap.set(name, name)
+    })
 
-    const podCountMap = new Map()
-    podsPerNode?.forEach((m: any) => podCountMap.set(m.metric.node, parseInt(m.value[1])))
+    // Pod 정보를 통한 매핑 보강 및 정확한 개수 집계
+    if (podRes.ok) {
+      const podData = await podRes.json()
+      podData.items?.forEach((pod: any) => {
+        const nodeName = pod.spec?.nodeName
+        if (nodeName) {
+          nodePodCountMap.set(nodeName, (nodePodCountMap.get(nodeName) || 0) + 1)
+        }
+        if (pod.status?.podIP && nodeName) {
+          if (!ipMap.has(pod.status.podIP)) ipMap.set(pod.status.podIP, nodeName)
+        }
+      })
+    }
+
+    const mapMetricToNode = (metrics: any[]) => {
+      const resultMap = new Map<string, number>()
+      if (!metrics) return resultMap
+      metrics.forEach((m: any) => {
+        let rawId = m.metric.instance || m.metric.node || m.metric.kubernetes_node || m.metric.nodename || ''
+        if (rawId.includes(':')) rawId = rawId.split(':')[0]
+        let nodeName = ipMap.get(rawId) || rawId
+        if (nodeName && !ipMap.has(nodeName)) {
+           const short = nodeName.split('.')[0]
+           if (ipMap.has(short)) nodeName = ipMap.get(short)!
+        }
+        if (nodeName) resultMap.set(nodeName, parseFloat(m.value[1]))
+      })
+      return resultMap
+    }
+
+    const cpuMap = mapMetricToNode(cpuMetrics)
+    const memMap = mapMetricToNode(memMetrics)
+    const gpuMap = mapMetricToNode(gpuMetrics)
 
     const items = k8sData?.items || []
+
+    const findValue = (map: Map<string, number>, nodeName: string, ips: string[]) => {
+      if (map.has(nodeName)) return map.get(nodeName)
+      const shortName = nodeName.split('.')[0]
+      if (map.has(shortName)) return map.get(shortName)
+      for (const ip of ips) {
+        if (map.has(ip)) return map.get(ip)
+      }
+      const lowerNode = nodeName.toLowerCase()
+      for (const [key, val] of map.entries()) {
+        if (key.toLowerCase() === lowerNode || key.toLowerCase().startsWith(lowerNode)) return val
+      }
+      return 0
+    }
 
     const nodes = items.map((node: any) => {
       const name = node.metadata?.name || 'Unknown'
       const status = node.status?.conditions?.find((c: any) => c.type === 'Ready')?.status === 'True' ? 'Ready' : 'NotReady'
       const labels = node.metadata?.labels || {}
+      const nodeIps = node.status?.addresses?.filter((a: any) => a.type === 'InternalIP' || a.type === 'ExternalIP').map((a: any) => a.address) || []
+
+      const cpuUsage = Math.round(findValue(cpuMap, name, nodeIps) || 0)
+      const memoryUsage = Math.round(findValue(memMap, name, nodeIps) || 0)
+      const gpuUsageValue = Math.round(findValue(gpuMap, name, nodeIps) || 0)
       
-      let role = 'worker'
+      // 실제 K8s API로 집계한 정확한 파드 개수
+      const podCount = nodePodCountMap.get(name) || 0
+
+      let role: any = 'worker'
+      const hasGpuCapacity = node.status?.capacity?.['nvidia.com/gpu'] && parseInt(node.status.capacity['nvidia.com/gpu']) > 0
+      const hasGpuLabels = labels['nvidia.com/gpu.present'] === 'true' || labels['gpu'] === 'true' || labels['hardware-type'] === 'gpu'
+      const isGpuByName = name.toLowerCase().includes('gpu') || name.toLowerCase().includes('nvidia')
+
       if (labels['node-role.kubernetes.io/control-plane'] !== undefined || labels['node-role.kubernetes.io/master'] !== undefined) {
         role = 'control-plane'
-      } else if (labels['nvidia.com/gpu.present'] === 'true' || labels['gpu'] === 'true' || name.includes('gpu')) {
+      } else if (hasGpuCapacity || hasGpuLabels || isGpuByName || gpuUsageValue > 0) {
         role = 'gpu-worker'
       }
-
-      const cpuUsage = Math.round(cpuMap.get(name) || Math.random() * 20 + 10) // 폴백으로 랜덤값 (실제 데이터 없을시 시각화용)
-      const memoryUsage = Math.round(memMap.get(name) || Math.random() * 30 + 20)
-      const podCount = podCountMap.get(name) || (node.status?.images?.length || 0)
 
       return {
         name,
@@ -97,6 +162,7 @@ export async function GET() {
         role,
         cpuUsage,
         memoryUsage,
+        gpuUsage: gpuUsageValue,
         podCount,
         diskPressure: node.status?.conditions?.find((c: any) => c.type === 'DiskPressure')?.status === 'True',
         memoryPressure: node.status?.conditions?.find((c: any) => c.type === 'MemoryPressure')?.status === 'True',
