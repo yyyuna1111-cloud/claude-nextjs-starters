@@ -1,47 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  ComposedChart,
-  Legend,
-  Line,
-  LineChart,
-  PieChart,
-  Pie,
-  PolarAngleAxis,
-  PolarGrid,
-  Radar,
-  RadarChart,
-  ResponsiveContainer,
-  Scatter,
-  ScatterChart,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
-import {
-  CheckCircle2,
-  Clock,
-  Cpu,
-  DollarSign,
-  FlaskConical,
-  GitBranch,
-  History,
-  Loader2,
-  RefreshCw,
-  Search,
-  ShieldAlert,
   ShieldCheck,
-  TrendingDown,
-  TrendingUp,
+  ShieldAlert,
+  CheckCircle2,
   XCircle,
-  Zap,
+  Clock,
+  Save,
+  ChevronRight,
 } from 'lucide-react'
-import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
@@ -51,37 +19,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Button } from '@/components/ui/button'
 import {
-  evalPipelineRuns,
-  evalVersionComparison,
-  embeddingLatencyHistory,
-  embeddingQualityTrend,
-  embeddingVersionComparison,
-  embeddingRolloutHistory,
-  embeddingRpsHistory,
-  inferenceServices,
-  inferenceServicePodStatus,
-  inferenceServiceQueueSize,
-  inferenceService429Rate,
-  inferenceQueueSizeHistory,
-  inferenceQueueLatencyHistory,
-  inferenceRpsHistory,
-  inferenceHttpStatusRpsHistory,
-  ragClusterPoints,
-  ragFlowData,
-  ragHeatmapData,
-  ragRadarMetrics,
-  ragVersions,
-  ragVersionKpi,
-  ragVersionRadar,
-  ragVersionDailyTrend,
-  type RagVersion,
-  type EvalGateResult,
-  type EvalPipelineStatus,
-  type HeatmapCell,
-  type Environment,
-} from '@/lib/eval-mock-data'
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
 
+// ── 색상 팔레트 ──────────────────────────────────────────────────
 const C = {
   blue:   '#3b82f6',
   green:  '#22c55e',
@@ -91,960 +37,875 @@ const C = {
   orange: '#f97316',
 } as const
 
-const CHART_GRID = 'hsl(var(--border))'
-const CHART_TICK = 'currentColor'
-const TOOLTIP_STYLE = {
-  backgroundColor: 'hsl(var(--popover))',
-  border: '1px solid hsl(var(--border))',
-  borderRadius: '8px',
-  color: 'hsl(var(--popover-foreground))',
-  fontSize: 12,
-  boxShadow: '0 8px 24px rgba(0,0,0,0.1)',
-  padding: '8px 12px',
+// ── 목 데이터 ────────────────────────────────────────────────────
+
+type ActiveStatus = 'active' | 'inactive'
+type ApprovalStatus = 'Pending' | 'Approved' | 'Rejected'
+type DeployStatus = 'deployed' | 'ready' | 'blocked' | '-'
+type PassFail = 'Pass' | 'Fail'
+
+interface Dataset {
+  id: string
+  name: string
+  version: string
+  questionCount: number
+  categories: { name: string; count: number }[]
+  createdAt: string
+  lastUsedAt: string
+  status: ActiveStatus
 }
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
+interface SampleQuestion {
+  id: number
+  question: string
+  answer: string
+  category: string
+}
+
+interface DatasetUsageHistory {
+  rcId: string
+  rcVersion: string
+  evaluatedAt: string
+  ragasScore: number
+  passRate: number
+  gate: PassFail
+}
+
+interface CriteriaMetric {
+  key: string
+  label: string
+  threshold: number
+  unit: string
+}
+
+interface RCItem {
+  id: string
+  version: string
+  pipeline: string
+  ragasScore: number
+  faithfulness: number
+  answerRelevancy: number
+  contextPrecision: number
+  contextRecall: number
+  passRate: number
+  latencyMs: number
+  gate: PassFail
+  approvalStatus: ApprovalStatus
+  approvedBy?: string
+  approvedAt?: string
+  deployStatus: DeployStatus
+}
+
+interface CriteriaRow {
+  key: string
+  label: string
+  threshold: number
+  actual: number
+  unit: string
+}
+
+const mockDatasets: Dataset[] = [
+  {
+    id: 'ds-001',
+    name: '세무·법률 QA 셋',
+    version: 'v1.0',
+    questionCount: 20,
+    categories: [
+      { name: '법률/규정', count: 10 },
+      { name: '내부정책',  count: 5  },
+      { name: '계약/서류', count: 5  },
+    ],
+    createdAt: '2026-05-27',
+    lastUsedAt: '2026-05-27',
+    status: 'active',
+  },
+]
+
+const mockSampleQuestions: Record<string, SampleQuestion[]> = {
+  'ds-001': [
+    { id: 1,  question: '법인세법상 각 사업연도 소득에 대한 법인세 세율은?',          answer: '과세표준 2억 이하 9%, 2억 초과~200억 이하 19%, 200억 초과~3000억 이하 21%, 3000억 초과 24%입니다.', category: '법률/규정' },
+    { id: 2,  question: '부가가치세 일반과세자의 신고·납부 기한은?',                  answer: '1기(1~6월) 확정신고는 7월 25일, 2기(7~12월) 확정신고는 다음 해 1월 25일까지입니다.',               category: '법률/규정' },
+    { id: 3,  question: '소득세법상 근로소득 원천징수 시기는?',                       answer: '근로소득을 지급하는 달의 다음 달 10일까지 원천징수한 세액을 납부해야 합니다.',                      category: '법률/규정' },
+    { id: 4,  question: '세금계산서 수취 후 매입세액 공제 신청 기한은?',              answer: '해당 과세기간의 확정신고 기한 내에 신청해야 하며, 기한 후 신고 시 공제가 제한될 수 있습니다.',      category: '내부정책' },
+    { id: 5,  question: '법인카드 사용 후 증빙 제출 기한은?',                         answer: '사용일로부터 5영업일 이내에 경비 처리 시스템에 영수증을 등록해야 합니다.',                          category: '내부정책' },
+    { id: 6,  question: '용역 계약서상 세금계산서 발급 조건은?',                      answer: '용역 공급 시기(계약서상 대금 지급일 또는 용역 완료일) 기준으로 발급하며, 선금 수령 시 수령일 기준으로 발급합니다.', category: '계약/서류' },
+    { id: 7,  question: '원천징수 이행상황신고서 제출 시 첨부서류는?',                answer: '원천징수 이행상황신고서 본지와 원천징수세액 납부서를 함께 제출하며, 전자신고 시 별도 첨부 불필요합니다.', category: '계약/서류' },
+    { id: 8,  question: '수정세금계산서를 발급할 수 있는 사유는?',                    answer: '착오 기재, 공급가액 변동, 계약 해제, 환입 등의 사유 발생 시 수정세금계산서를 발급할 수 있습니다.',  category: '법률/규정' },
+    { id: 9,  question: '전자세금계산서 발급 의무 대상과 기한은?',                    answer: '법인사업자 및 직전연도 공급가액 8천만원 이상 개인사업자는 공급 시기 다음 날까지 발급해야 합니다.',  category: '법률/규정' },
+    { id: 10, question: '외화 용역 계약 시 세금계산서 공급가액 산정 기준은?',         answer: '공급 시기의 기준환율 또는 재정환율을 적용하여 원화로 환산한 금액을 공급가액으로 기재합니다.',        category: '계약/서류' },
+  ],
+}
+
+const mockUsageHistory: Record<string, DatasetUsageHistory[]> = {
+  'ds-001': [
+    { rcId: 'eval-v2.4.0-rc5-v1.0', rcVersion: 'v2.4.0-rc5', evaluatedAt: '2026-05-27 17:20', ragasScore: 0.9242, passRate: 92.4, gate: 'Pass' },
+    { rcId: 'eval-v2.4.0-rc4-v1.0', rcVersion: 'v2.4.0-rc4', evaluatedAt: '2026-05-27 17:44', ragasScore: 0.9662, passRate: 89.3, gate: 'Fail' },
+    { rcId: 'eval-v2.4.0-rc3-v1.0', rcVersion: 'v2.4.0-rc3', evaluatedAt: '2026-05-27 17:41', ragasScore: 0.8418, passRate: 87.3, gate: 'Fail' },
+  ],
+}
+
+const defaultCriteria: CriteriaMetric[] = [
+  { key: 'ragasScore',        label: 'RAGAS 종합 점수',   threshold: 0.80, unit: '' },
+  { key: 'faithfulness',      label: 'Faithfulness',        threshold: 0.85, unit: '' },
+  { key: 'answerRelevancy',   label: 'Answer Relevancy',    threshold: 0.75, unit: '' },
+  { key: 'contextPrecision',  label: 'Context Precision',   threshold: 0.65, unit: '' },
+  { key: 'contextRecall',     label: 'Context Recall',      threshold: 0.65, unit: '' },
+  { key: 'passRate',          label: '체감 응답 통과율',   threshold: 82,   unit: '%' },
+  { key: 'latencyMs',         label: '응답 속도 (Latency)', threshold: 2200, unit: 'ms' },
+]
+
+const mockRCList: RCItem[] = [
+  {
+    id: 'rc-2026-0523-01',
+    version: 'v2.3.1',
+    pipeline: 'rag-pipeline-prod',
+    ragasScore: 0.873,
+    faithfulness: 0.901,
+    answerRelevancy: 0.856,
+    contextPrecision: 0.812,
+    contextRecall: 0.789,
+    passRate: 91.2,
+    latencyMs: 1340,
+    gate: 'Pass',
+    approvalStatus: 'Approved',
+    approvedBy: '이승연',
+    approvedAt: '2026-05-24 14:32',
+    deployStatus: 'deployed',
+  },
+  {
+    id: 'rc-2026-0521-01',
+    version: 'v2.3.0',
+    pipeline: 'rag-pipeline-prod',
+    ragasScore: 0.791,
+    faithfulness: 0.812,
+    answerRelevancy: 0.803,
+    contextPrecision: 0.754,
+    contextRecall: 0.741,
+    passRate: 83.7,
+    latencyMs: 1820,
+    gate: 'Fail',
+    approvalStatus: 'Rejected',
+    approvedBy: '이승연',
+    approvedAt: '2026-05-22 09:15',
+    deployStatus: 'blocked',
+  },
+  {
+    id: 'rc-2026-0526-01',
+    version: 'v2.4.0-rc1',
+    pipeline: 'rag-pipeline-staging',
+    ragasScore: 0.841,
+    faithfulness: 0.868,
+    answerRelevancy: 0.847,
+    contextPrecision: 0.803,
+    contextRecall: 0.776,
+    passRate: 88.4,
+    latencyMs: 1560,
+    gate: 'Pass',
+    approvalStatus: 'Pending',
+    deployStatus: 'ready',
+  },
+]
+
+// ── 공통 컴포넌트 ─────────────────────────────────────────────────
+
+function ActiveBadge({ status }: { status: ActiveStatus }) {
+  const isActive = status === 'active'
   return (
-    <p className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-      {children}
-    </p>
+    <span
+      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium"
+      style={{
+        color: isActive ? C.green : 'hsl(var(--muted-foreground))',
+        backgroundColor: isActive ? 'rgba(34,197,94,0.1)' : 'hsl(var(--muted))',
+      }}
+    >
+      <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ backgroundColor: isActive ? C.green : 'hsl(var(--muted-foreground))' }} />
+      {isActive ? 'Active' : 'Inactive'}
+    </span>
   )
 }
 
-function StatusBadge({ status }: { status: EvalPipelineStatus }) {
-  const cfg: Record<EvalPipelineStatus, { label: string; color: string; bg: string }> = {
-    success: { label: '완료',    color: C.green,  bg: 'rgba(34,197,94,0.1)'  },
-    failed:  { label: '실패',    color: C.red,    bg: 'rgba(239,68,68,0.1)'  },
-    running: { label: '실행 중', color: C.blue,   bg: 'rgba(59,130,246,0.1)' },
-    pending: { label: '대기',    color: 'hsl(var(--muted-foreground))', bg: 'hsl(var(--muted))' },
+function GateBadge({ gate }: { gate: PassFail }) {
+  return gate === 'Pass' ? (
+    <span className="flex items-center gap-1 text-[11px] font-semibold" style={{ color: C.green }}>
+      <ShieldCheck className="h-3 w-3" /> Pass
+    </span>
+  ) : (
+    <span className="flex items-center gap-1 text-[11px] font-semibold" style={{ color: C.red }}>
+      <ShieldAlert className="h-3 w-3" /> Fail
+    </span>
+  )
+}
+
+function ApprovalBadge({ status }: { status: ApprovalStatus }) {
+  const cfg: Record<ApprovalStatus, { color: string; bg: string }> = {
+    Approved: { color: C.green,  bg: 'rgba(34,197,94,0.1)'  },
+    Rejected: { color: C.red,    bg: 'rgba(239,68,68,0.1)'  },
+    Pending:  { color: C.yellow, bg: 'rgba(245,158,11,0.1)' },
   }
-  const { label, color, bg } = cfg[status]
+  const { color, bg } = cfg[status]
   return (
-    <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium" style={{ color, backgroundColor: bg }}>
-      {status === 'running' && <RefreshCw className="h-2.5 w-2.5 animate-spin" />}
+    <span className="rounded px-1.5 py-0.5 text-[11px] font-medium" style={{ color, backgroundColor: bg }}>
+      {status}
+    </span>
+  )
+}
+
+function DeployBadge({ status }: { status: DeployStatus }) {
+  const cfg: Record<DeployStatus, { color: string; bg: string; label: string }> = {
+    deployed: { color: C.green,  bg: 'rgba(34,197,94,0.1)',   label: 'Deployed'  },
+    ready:    { color: C.blue,   bg: 'rgba(59,130,246,0.1)',  label: 'Ready'     },
+    blocked:  { color: C.red,    bg: 'rgba(239,68,68,0.1)',   label: 'Blocked'   },
+    '-':      { color: 'hsl(var(--muted-foreground))', bg: 'hsl(var(--muted))', label: '-' },
+  }
+  const { color, bg, label } = cfg[status]
+  return (
+    <span className="rounded px-1.5 py-0.5 text-[11px] font-medium" style={{ color, backgroundColor: bg }}>
       {label}
     </span>
   )
 }
 
-function GateBadge({ result }: { result: EvalGateResult }) {
-  if (result === 'passed') return (
+function RowPassFail({ pass }: { pass: boolean }) {
+  return pass ? (
     <span className="flex items-center gap-1 text-[11px] font-medium" style={{ color: C.green }}>
-      <ShieldCheck className="h-3 w-3" /> 통과
+      <CheckCircle2 className="h-3 w-3" /> Pass
     </span>
-  )
-  if (result === 'blocked') return (
+  ) : (
     <span className="flex items-center gap-1 text-[11px] font-medium" style={{ color: C.red }}>
-      <ShieldAlert className="h-3 w-3" /> 차단
-    </span>
-  )
-  if (result === 'running') return (
-    <span className="flex items-center gap-1 text-[11px] font-medium" style={{ color: C.yellow }}>
-      <Loader2 className="h-3 w-3 animate-spin" /> 평가 중
-    </span>
-  )
-  return <span className="text-[11px] text-muted-foreground">-</span>
-}
-
-function StepDot({ status }: { status: EvalPipelineStatus }) {
-  if (status === 'success') return <CheckCircle2 className="h-3.5 w-3.5" style={{ color: C.green }} />
-  if (status === 'failed')  return <XCircle       className="h-3.5 w-3.5" style={{ color: C.red }} />
-  if (status === 'running') return <Loader2        className="h-3.5 w-3.5 animate-spin" style={{ color: C.blue }} />
-  return <span className="inline-block h-3.5 w-3.5 rounded-full border border-border" />
-}
-
-function fmtSec(s: number) {
-  if (!s) return '-'
-  if (s < 60) return `${s}s`
-  return `${Math.floor(s / 60)}m ${s % 60}s`
-}
-
-function relTime(iso: string) {
-  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 60000)
-  if (diff < 1)    return '방금'
-  if (diff < 60)   return `${diff}분 전`
-  if (diff < 1440) return `${Math.floor(diff / 60)}시간 전`
-  return `${Math.floor(diff / 1440)}일 전`
-}
-
-function heatCell(rate: number) {
-  if (rate >= 90) return { bg: 'rgba(34,197,94,0.2)',   text: '#16a34a' }
-  if (rate >= 80) return { bg: 'rgba(34,197,94,0.1)',   text: '#22c55e' }
-  if (rate >= 70) return { bg: 'rgba(245,158,11,0.15)', text: '#d97706' }
-  if (rate >= 60) return { bg: 'rgba(249,115,22,0.15)', text: '#ea580c' }
-  return           { bg: 'rgba(239,68,68,0.15)',  text: '#dc2626' }
-}
-
-function fmtVectors(n: number) {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`
-  if (n >= 1_000)     return `${(n / 1_000).toFixed(0)}K`
-  return String(n)
-}
-
-function EnvDot({ env }: { env: Environment }) {
-  const color = { prod: C.green, staging: C.yellow, dev: C.blue }[env]
-  return <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
-}
-
-function EnvBadge({ env }: { env: Environment }) {
-  const cfg = {
-    prod:    { color: C.green,  bg: 'rgba(34,197,94,0.1)'  },
-    staging: { color: C.yellow, bg: 'rgba(245,158,11,0.1)' },
-    dev:     { color: C.blue,   bg: 'rgba(59,130,246,0.1)' },
-  }[env]
-  return (
-    <span className="rounded px-1.5 py-0.5 text-[11px] font-semibold uppercase"
-      style={{ color: cfg.color, backgroundColor: cfg.bg }}>
-      {env}
+      <XCircle className="h-3 w-3" /> Fail
     </span>
   )
 }
 
-// ────────────────────────────────────────────────────────────────
-// 검색품질 탭
-// ────────────────────────────────────────────────────────────────
-function RetrievalTab({ version }: { version: RagVersion }) {
-  const [selectedService, setSelectedService] = useState(inferenceServices[0])
-  const podStatus = inferenceServicePodStatus[selectedService]
-  const queueSize = inferenceServiceQueueSize[selectedService]
-  const rate429   = inferenceService429Rate[selectedService]
-  const kpi       = ragVersionKpi[version]
+// ── 탭 1: 테스트 데이터셋 ─────────────────────────────────────────
 
-  const retFailPts  = ragClusterPoints.filter(p => p.cluster === 'retrieval-fail')
-  const successPts  = ragClusterPoints.filter(p => p.cluster === 'success')
-  const genFailPts  = ragClusterPoints.filter(p => p.cluster === 'generation-fail')
-  const bothFailPts = ragClusterPoints.filter(p => p.cluster === 'both-fail')
+function DatasetDetailSheet({ dataset, open, onClose }: {
+  dataset: Dataset | null
+  open: boolean
+  onClose: () => void
+}) {
+  if (!dataset) return null
+
+  const samples = mockSampleQuestions[dataset.id] ?? []
+  const history = mockUsageHistory[dataset.id] ?? []
+  const total = dataset.questionCount
 
   return (
-    <div className="space-y-5">
-      {/* KPI */}
-      <div className="grid grid-cols-4 gap-4">
-        {[
-          { label: '총 인덱싱 벡터', value: '4.82M',                          sub: 'prod 기준',                                                   icon: <Cpu    className="h-4 w-4 text-muted-foreground" />, color: C.blue   },
-          { label: '임베딩 처리량',  value: '2,450/s',                        sub: 'prod 실시간',                                                 icon: <Zap    className="h-4 w-4 text-muted-foreground" />, color: C.green  },
-          { label: 'Context Recall', value: kpi.contextRecall.toFixed(3),     sub: `${version} 기준`,                                             icon: <Search className="h-4 w-4 text-muted-foreground" />, color: C.purple },
-          { label: 'NDCG@10',       value: '0.847',                          sub: version === 'v2.3.1' ? '+0.009 vs 이전' : `${version} 기준`,    icon: <Clock  className="h-4 w-4 text-muted-foreground" />, color: C.orange },
-        ].map(({ label, value, sub, icon, color }) => (
-          <Card key={label}>
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between">
-                <p className="text-xs text-muted-foreground">{label}</p>
-                {icon}
-              </div>
-              <p className="mt-1 text-2xl font-bold" style={{ color }}>{value}</p>
-              <p className="text-[11px] text-muted-foreground">{sub}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+    <Sheet open={open} onOpenChange={v => { if (!v) onClose() }}>
+      <SheetContent side="right" className="w-[560px] max-w-full overflow-y-auto px-6 sm:max-w-[560px]">
+        <SheetHeader className="mb-5">
+          <SheetTitle className="flex items-center gap-2 text-base">
+            {dataset.name}
+            <span className="font-mono text-sm font-normal text-muted-foreground">{dataset.version}</span>
+            <ActiveBadge status={dataset.status} />
+          </SheetTitle>
+          <p className="text-xs text-muted-foreground">
+            질문 {dataset.questionCount.toLocaleString()}개 · 생성일 {dataset.createdAt} · 마지막 사용 {dataset.lastUsedAt}
+          </p>
+        </SheetHeader>
 
-      {/* 검색 품질 트렌드 + 버전 비교 */}
-      <div className="grid grid-cols-3 gap-4">
-        <Card className="col-span-2">
-          <CardContent className="p-4">
-            <SectionLabel>검색 품질 주간 트렌드</SectionLabel>
-            <ResponsiveContainer width="100%" height={190}>
-              <ComposedChart data={embeddingQualityTrend} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid stroke={CHART_GRID} strokeDasharray="3 3" vertical={false} />
-                <XAxis 
-                  dataKey="week" 
-                  tick={{ fill: CHART_TICK, fontSize: 10 }} 
-                  className="text-muted-foreground"
-                  axisLine={{ stroke: 'hsl(var(--border))' }}
-                  tickLine={{ stroke: 'hsl(var(--border))' }}
-                />
-                <YAxis 
-                  domain={[0.75, 0.95]} 
-                  tick={{ fill: CHART_TICK, fontSize: 10 }} 
-                  className="text-muted-foreground"
-                  axisLine={{ stroke: 'hsl(var(--border))' }}
-                  tickLine={{ stroke: 'hsl(var(--border))' }}
-                  tickFormatter={(v) => v.toFixed(2)} 
-                />
-                <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v) => [Number(v).toFixed(3)]} />
-                <Line type="monotone" dataKey="ndcg10"   stroke={C.blue}   strokeWidth={2} dot={{ r: 4, fill: C.blue }}   name="NDCG@10"   />
-                <Line type="monotone" dataKey="mrr"      stroke={C.purple} strokeWidth={2} dot={{ r: 4, fill: C.purple }} name="MRR"       />
-                <Line type="monotone" dataKey="recall10" stroke={C.green}  strokeWidth={2} dot={{ r: 4, fill: C.green }}  name="Recall@10" strokeDasharray="5 5" />
-                <Legend wrapperStyle={{ fontSize: 10 }} />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-                검색 품질 버전 비교
-              </p>
-              <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
-                <span className="flex items-center gap-1">
-                  <span className="inline-block h-1.5 w-3 rounded-sm" style={{ backgroundColor: C.blue }} />v1.5.0
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="inline-block h-1.5 w-3 rounded-sm opacity-40" style={{ backgroundColor: C.blue }} />v1.4.2
-                </span>
-              </div>
-            </div>
+        <div className="space-y-6">
+          {/* 카테고리 분포 */}
+          <div>
+            <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+              카테고리 분포
+            </p>
             <div className="space-y-2.5">
-              {embeddingVersionComparison.map(({ metric, current, previous }) => {
-                const delta = (current - previous) / previous * 100
-                const curPct  = ((current  - 0.6) / 0.4) * 100
-                const prevPct = ((previous - 0.6) / 0.4) * 100
-                const barColor = metric.startsWith('NDCG') ? C.blue : metric === 'MRR' ? C.purple : C.green
+              {dataset.categories.map(cat => {
+                const pct = Math.round((cat.count / total) * 100)
                 return (
-                  <div key={metric} className="flex items-center gap-2">
-                    <span className="w-14 shrink-0 text-[10px] text-muted-foreground">{metric}</span>
-                    <div className="flex-1 space-y-0.5">
-                      <div className="relative h-2 w-full overflow-hidden rounded-sm bg-muted">
-                        <div className="absolute inset-y-0 left-0 rounded-sm" style={{ width: `${curPct}%`, backgroundColor: barColor }} />
-                      </div>
-                      <div className="relative h-2 w-full overflow-hidden rounded-sm bg-muted">
-                        <div className="absolute inset-y-0 left-0 rounded-sm opacity-40" style={{ width: `${prevPct}%`, backgroundColor: barColor }} />
-                      </div>
+                  <div key={cat.name}>
+                    <div className="mb-1 flex items-center justify-between text-xs">
+                      <span className="font-medium">{cat.name}</span>
+                      <span className="text-muted-foreground">{cat.count}개 ({pct}%)</span>
                     </div>
-                    <span className="w-11 shrink-0 text-right text-[10px] font-semibold" style={{ color: delta >= 0 ? C.green : C.red }}>
-                      {delta >= 0 ? '+' : ''}{delta.toFixed(1)}%
-                    </span>
+                    <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{ width: `${pct}%`, backgroundColor: C.blue }}
+                      />
+                    </div>
                   </div>
                 )
               })}
             </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* 레이턴시 + 처리량 + 클러스터 분석 */}
-      <div className="grid grid-cols-3 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <SectionLabel>임베딩 레이턴시 추이 (12시간)</SectionLabel>
-            <ResponsiveContainer width="100%" height={190}>
-              <LineChart data={embeddingLatencyHistory} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                <CartesianGrid stroke={CHART_GRID} strokeDasharray="3 3" vertical={false} />
-                <XAxis 
-                  dataKey="time" 
-                  tick={{ fill: CHART_TICK, fontSize: 10 }} 
-                  className="text-muted-foreground"
-                  axisLine={{ stroke: 'hsl(var(--border))' }}
-                  tickLine={{ stroke: 'hsl(var(--border))' }}
-                />
-                <YAxis 
-                  unit="ms" 
-                  tick={{ fill: CHART_TICK, fontSize: 10 }} 
-                  className="text-muted-foreground"
-                  axisLine={{ stroke: 'hsl(var(--border))' }}
-                  tickLine={{ stroke: 'hsl(var(--border))' }}
-                />
-                <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v) => [`${v}ms`]} />
-                <Line type="monotone" dataKey="p50" stroke={C.green}  strokeWidth={2} dot={false} name="p50" />
-                <Line type="monotone" dataKey="p95" stroke={C.yellow} strokeWidth={2} dot={false} name="p95" />
-                <Line type="monotone" dataKey="p99" stroke={C.red}    strokeWidth={2} dot={false} name="p99" strokeDasharray="4 4" />
-                <Legend wrapperStyle={{ fontSize: 10 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <SectionLabel>임베딩 처리량 추이 (12시간)</SectionLabel>
-            <ResponsiveContainer width="100%" height={190}>
-              <LineChart data={embeddingRpsHistory} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                <CartesianGrid stroke={CHART_GRID} strokeDasharray="3 3" vertical={false} />
-                <XAxis 
-                  dataKey="time" 
-                  tick={{ fill: CHART_TICK, fontSize: 10 }} 
-                  className="text-muted-foreground"
-                  axisLine={{ stroke: 'hsl(var(--border))' }}
-                  tickLine={{ stroke: 'hsl(var(--border))' }}
-                />
-                <YAxis 
-                  tick={{ fill: CHART_TICK, fontSize: 10 }} 
-                  className="text-muted-foreground"
-                  axisLine={{ stroke: 'hsl(var(--border))' }}
-                  tickLine={{ stroke: 'hsl(var(--border))' }}
-                />
-                <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v) => [`${Number(v).toLocaleString()}/s`]} />
-                <Line type="monotone" dataKey="prod"    stroke={C.green}  strokeWidth={2} dot={false} name="prod" />
-                <Line type="monotone" dataKey="staging" stroke={C.yellow} strokeWidth={2} dot={false} name="staging" strokeDasharray="5 5" />
-                <Legend wrapperStyle={{ fontSize: 10 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <SectionLabel>실패 원인 클러스터 분석</SectionLabel>
-            <ResponsiveContainer width="100%" height={190}>
-              <ScatterChart margin={{ top: 5, right: 5, left: -20, bottom: 15 }}>
-                <CartesianGrid stroke={CHART_GRID} strokeDasharray="3 3" />
-                <XAxis 
-                  dataKey="x" 
-                  type="number" 
-                  domain={[0.2, 1]} 
-                  name="Retrieval Score"
-                  tick={{ fill: CHART_TICK, fontSize: 10 }} 
-                  className="text-muted-foreground"
-                  axisLine={{ stroke: 'hsl(var(--border))' }}
-                  tickLine={{ stroke: 'hsl(var(--border))' }}
-                  label={{ value: 'Retrieval', fill: 'currentColor', fontSize: 10, position: 'insideBottom', offset: -8 }} 
-                />
-                <YAxis 
-                  dataKey="y" 
-                  type="number" 
-                  domain={[0.3, 1]} 
-                  name="Faithfulness" 
-                  tick={{ fill: CHART_TICK, fontSize: 10 }} 
-                  className="text-muted-foreground"
-                  axisLine={{ stroke: 'hsl(var(--border))' }}
-                  tickLine={{ stroke: 'hsl(var(--border))' }}
-                />
-                <Tooltip contentStyle={TOOLTIP_STYLE} />
-                <Scatter data={successPts}  fill={C.green}  opacity={0.85} name="통과"     r={4} />
-                <Scatter data={retFailPts}  fill={C.orange} opacity={0.85} name="검색 실패" r={4} />
-                <Scatter data={genFailPts}  fill={C.purple} opacity={0.85} name="생성 실패" r={4} />
-                <Scatter data={bothFailPts} fill={C.red}    opacity={0.85} name="복합 실패" r={4} />
-                <Legend wrapperStyle={{ fontSize: 10 }} />
-              </ScatterChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* InferenceService 모니터링 */}
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-semibold">InferenceService 모니터링</CardTitle>
-            <Select value={selectedService} onValueChange={setSelectedService}>
-              <SelectTrigger className="h-7 w-[180px] text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {inferenceServices.map(svc => (
-                  <SelectItem key={svc} value={svc} className="text-xs">{svc}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-3 gap-3">
-            <div className="rounded-md border p-3" style={{ borderColor: C.green + '66', backgroundColor: C.green + '0d' }}>
-              <p className="mb-2 text-[11px] font-semibold text-muted-foreground">파드 상태</p>
-              <div className="space-y-1.5">
-                {[
-                  { label: '목표 (Desired)',       value: podStatus.desired   },
-                  { label: '준비 (Ready)',          value: podStatus.ready     },
-                  { label: '사용 가능 (Available)', value: podStatus.available },
-                ].map(({ label, value }) => (
-                  <div key={label} className="flex items-center justify-between rounded px-2 py-1" style={{ backgroundColor: C.green + '1a' }}>
-                    <span className="text-xs text-muted-foreground">{label}</span>
-                    <span className="text-sm font-bold" style={{ color: C.green }}>{value}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="flex flex-col items-center justify-center rounded-md border p-3">
-              <p className="mb-2 text-[11px] font-semibold text-muted-foreground">429 비율 (%)</p>
-              {rate429 === null ? (
-                <p className="text-2xl font-bold text-muted-foreground">No data</p>
-              ) : (
-                <p className="text-4xl font-bold" style={{ color: rate429 > 5 ? C.red : C.green }}>{rate429.toFixed(2)}%</p>
-              )}
-            </div>
-            <div className="flex flex-col items-center justify-center rounded-md border p-3">
-              <p className="mb-2 text-[11px] font-semibold text-muted-foreground">현재 큐 대기 수</p>
-              <p className="text-4xl font-bold" style={{ color: queueSize > 0 ? C.yellow : C.green }}>{queueSize}</p>
-            </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <SectionLabel>큐 대기 수 (Queue Size)</SectionLabel>
-              <ResponsiveContainer width="100%" height={160}>
-                <LineChart data={inferenceQueueSizeHistory} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
-                  <CartesianGrid stroke={CHART_GRID} strokeDasharray="3 3" vertical={false} />
-                  <XAxis 
-                    dataKey="time" 
-                    tick={{ fill: CHART_TICK, fontSize: 9 }} 
-                    interval={2} 
-                    className="text-muted-foreground"
-                    axisLine={{ stroke: 'hsl(var(--border))' }}
-                    tickLine={{ stroke: 'hsl(var(--border))' }}
-                  />
-                  <YAxis 
-                    tick={{ fill: CHART_TICK, fontSize: 9 }} 
-                    allowDecimals={false} 
-                    className="text-muted-foreground"
-                    axisLine={{ stroke: 'hsl(var(--border))' }}
-                    tickLine={{ stroke: 'hsl(var(--border))' }}
-                  />
-                  <Tooltip contentStyle={TOOLTIP_STYLE} />
-                  <Line type="monotone" dataKey="queueSize" stroke={C.blue} strokeWidth={2} dot={false} name="Queue Size" />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-            <div>
-              <SectionLabel>큐 대기 시간 P50 / P95 / P99</SectionLabel>
-              <ResponsiveContainer width="100%" height={160}>
-                <LineChart data={inferenceQueueLatencyHistory} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
-                  <CartesianGrid stroke={CHART_GRID} strokeDasharray="3 3" vertical={false} />
-                  <XAxis 
-                    dataKey="time" 
-                    tick={{ fill: CHART_TICK, fontSize: 9 }} 
-                    interval={2} 
-                    className="text-muted-foreground"
-                    axisLine={{ stroke: 'hsl(var(--border))' }}
-                    tickLine={{ stroke: 'hsl(var(--border))' }}
-                  />
-                  <YAxis 
-                    unit="ms" 
-                    tick={{ fill: CHART_TICK, fontSize: 9 }} 
-                    className="text-muted-foreground"
-                    axisLine={{ stroke: 'hsl(var(--border))' }}
-                    tickLine={{ stroke: 'hsl(var(--border))' }}
-                  />
-                  <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v) => [`${v}ms`]} />
-                  <Line type="monotone" dataKey="p50" stroke={C.green}  strokeWidth={2} dot={false} name="P50" />
-                  <Line type="monotone" dataKey="p95" stroke={C.yellow} strokeWidth={2} dot={false} name="P95" />
-                  <Line type="monotone" dataKey="p99" stroke={C.red}    strokeWidth={2} dot={false} name="P99" strokeDasharray="4 4" />
-                  <Legend wrapperStyle={{ fontSize: 9 }} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-            <div>
-              <SectionLabel>초당 요청 수 (RPS)</SectionLabel>
-              <ResponsiveContainer width="100%" height={160}>
-                <LineChart data={inferenceRpsHistory} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                  <CartesianGrid stroke={CHART_GRID} strokeDasharray="3 3" vertical={false} />
-                  <XAxis 
-                    dataKey="time" 
-                    tick={{ fill: CHART_TICK, fontSize: 9 }} 
-                    interval={2} 
-                    className="text-muted-foreground"
-                    axisLine={{ stroke: 'hsl(var(--border))' }}
-                    tickLine={{ stroke: 'hsl(var(--border))' }}
-                  />
-                  <YAxis 
-                    tick={{ fill: CHART_TICK, fontSize: 9 }} 
-                    tickFormatter={(v) => v.toFixed(2)} 
-                    className="text-muted-foreground"
-                    axisLine={{ stroke: 'hsl(var(--border))' }}
-                    tickLine={{ stroke: 'hsl(var(--border))' }}
-                  />
-                  <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v) => [`${Number(v).toFixed(3)} req/s`]} />
-                  <Line type="monotone" dataKey="rps" stroke={C.blue} strokeWidth={2} dot={false} name="RPS" />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
+          {/* 질문 샘플 미리보기 */}
           <div>
-            <SectionLabel>HTTP 상태코드별 RPS (Istio)</SectionLabel>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="col-span-2">
-                <ResponsiveContainer width="100%" height={160}>
-                  <LineChart data={inferenceHttpStatusRpsHistory} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                    <CartesianGrid stroke={CHART_GRID} strokeDasharray="3 3" vertical={false} />
-                    <XAxis 
-                      dataKey="time" 
-                      tick={{ fill: CHART_TICK, fontSize: 9 }} 
-                      interval={2} 
-                      className="text-muted-foreground"
-                      axisLine={{ stroke: 'hsl(var(--border))' }}
-                      tickLine={{ stroke: 'hsl(var(--border))' }}
-                    />
-                    <YAxis 
-                      tick={{ fill: CHART_TICK, fontSize: 9 }} 
-                      tickFormatter={(v) => v.toFixed(3)} 
-                      className="text-muted-foreground"
-                      axisLine={{ stroke: 'hsl(var(--border))' }}
-                      tickLine={{ stroke: 'hsl(var(--border))' }}
-                    />
-                    <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v) => [`${Number(v).toFixed(3)} req/s`]} />
-                    <Line type="monotone" dataKey="s200" stroke={C.green}  strokeWidth={2} dot={false} name="200" />
-                    <Line type="monotone" dataKey="s404" stroke={C.yellow} strokeWidth={2} dot={false} name="404" />
-                    <Line type="monotone" dataKey="s503" stroke={C.red}    strokeWidth={2} dot={false} name="503" />
-                    <Legend wrapperStyle={{ fontSize: 9 }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="flex items-center">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+              질문 샘플 미리보기 ({samples.length}건)
+            </p>
+            <div className="space-y-3">
+              {samples.map(s => (
+                <div key={s.id} className="rounded-lg border p-3 text-xs">
+                  <div className="mb-1.5 flex items-start gap-2">
+                    <span className="mt-0.5 shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                      {s.category}
+                    </span>
+                    <p className="font-medium leading-relaxed">{s.question}</p>
+                  </div>
+                  <p className="leading-relaxed text-muted-foreground pl-1 border-l-2 border-border ml-1">
+                    {s.answer}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* 사용 이력 */}
+          <div>
+            <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+              사용 이력
+            </p>
+            {history.length === 0 ? (
+              <p className="text-xs text-muted-foreground">사용 이력이 없습니다.</p>
+            ) : (
+              <div className="overflow-hidden rounded-lg border">
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="border-b">
-                      <th className="pb-1 text-left text-[11px] text-muted-foreground">Name</th>
-                      <th className="pb-1 text-right text-[11px] text-muted-foreground">Last</th>
-                      <th className="pb-1 text-right text-[11px] text-muted-foreground">Max</th>
+                    <tr className="border-b bg-muted/30">
+                      {['RC 버전', '평가일시', 'RAGAS', '통과율', 'Gate'].map(h => (
+                        <th key={h} className="px-3 py-2 text-left font-semibold text-muted-foreground">{h}</th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {[
-                      { name: '200', color: C.green,  last: 0.133, max: 0.133 },
-                      { name: '404', color: C.yellow, last: 0,     max: 0     },
-                      { name: '503', color: C.red,    last: 0,     max: 0.02  },
-                    ].map(row => (
-                      <tr key={row.name}>
-                        <td className="py-1">
-                          <span className="flex items-center gap-1.5">
-                            <span className="inline-block h-0.5 w-4 rounded" style={{ backgroundColor: row.color }} />
-                            <span style={{ color: row.color }}>{row.name}</span>
-                          </span>
+                    {history.map(h => (
+                      <tr key={h.rcId} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
+                        <td className="px-3 py-2 font-mono font-medium">{h.rcVersion}</td>
+                        <td className="px-3 py-2 text-muted-foreground">{h.evaluatedAt}</td>
+                        <td className="px-3 py-2 font-mono font-semibold" style={{ color: h.ragasScore >= 0.80 ? C.green : C.red }}>
+                          {h.ragasScore.toFixed(3)}
                         </td>
-                        <td className="py-1 text-right font-mono">{row.last.toFixed(3)} req/s</td>
-                        <td className="py-1 text-right font-mono">{row.max.toFixed(3)} req/s</td>
+                        <td className="px-3 py-2 font-mono font-semibold" style={{ color: h.passRate >= 85 ? C.green : C.red }}>
+                          {h.passRate}%
+                        </td>
+                        <td className="px-3 py-2">
+                          <GateBadge gate={h.gate} />
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            </div>
+            )}
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+  )
+}
+
+function DatasetTab() {
+  const [selectedDs, setSelectedDs] = useState<Dataset | null>(null)
+
+  return (
+    <div className="space-y-4">
+      <DatasetDetailSheet
+        dataset={selectedDs}
+        open={selectedDs !== null}
+        onClose={() => setSelectedDs(null)}
+      />
+      <Card>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b bg-muted/30">
+                  {['이름 / 버전', '질문 수', '카테고리 구성', '생성일', '마지막 사용일', '상태', ''].map(h => (
+                    <th key={h} className="px-4 py-3 text-left font-semibold text-muted-foreground">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {mockDatasets.map(ds => (
+                  <tr
+                    key={ds.id}
+                    className="border-b cursor-pointer transition-colors hover:bg-muted/30"
+                    onClick={() => setSelectedDs(ds)}
+                  >
+                    <td className="px-4 py-3">
+                      <p className="font-medium">{ds.name}</p>
+                      <p className="text-muted-foreground font-mono">{ds.version}</p>
+                    </td>
+                    <td className="px-4 py-3 font-bold" style={{ color: C.blue }}>
+                      {ds.questionCount.toLocaleString()}개
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-1">
+                        {ds.categories.map(cat => (
+                          <span key={cat.name} className="rounded bg-muted px-1.5 py-0.5 text-[10px]">
+                            {cat.name} <span className="font-semibold">{cat.count}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">{ds.createdAt}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{ds.lastUsedAt}</td>
+                    <td className="px-4 py-3">
+                      <ActiveBadge status={ds.status} />
+                    </td>
+                    <td className="px-4 py-3">
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </CardContent>
       </Card>
+    </div>
+  )
+}
 
-      {/* 배포 이력 */}
+// ── 탭 2: 합격 기준 설정 ─────────────────────────────────────────
+
+function CriteriaTab() {
+  const [criteria, setCriteria] = useState<CriteriaMetric[]>(defaultCriteria)
+  const [saved, setSaved] = useState(false)
+
+  function handleChange(key: string, value: string) {
+    setCriteria(prev =>
+      prev.map(c => (c.key === key ? { ...c, threshold: Number(value) } : c))
+    )
+    setSaved(false)
+  }
+
+  function handleSave() {
+    setSaved(true)
+  }
+
+  return (
+    <div className="space-y-4">
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-            <History className="h-4 w-4 text-muted-foreground" />
-            배포 이력
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-semibold">합격 기준 임계값</CardTitle>
+            <Button size="sm" className="h-7 gap-1.5 text-xs" onClick={handleSave}>
+              <Save className="h-3.5 w-3.5" />
+              {saved ? '저장됨' : '저장'}
+            </Button>
+          </div>
         </CardHeader>
-        <CardContent>
-          <div className="relative space-y-0">
-            {embeddingRolloutHistory.map((r, i) => {
-              const dotColor =
-                r.status === 'stable'  ? C.green  :
-                r.status === 'exp'     ? C.blue   :
-                r.status === 'retired' ? 'hsl(var(--muted-foreground))' : C.red
-              const statusColor =
-                r.status === 'stable' ? C.green :
-                r.status === 'exp'    ? C.blue  : 'hsl(var(--muted-foreground))'
-              const statusBg =
-                r.status === 'stable' ? 'rgba(34,197,94,0.1)'  :
-                r.status === 'exp'    ? 'rgba(59,130,246,0.1)' : 'hsl(var(--muted))'
-              return (
-                <div key={i} className="flex gap-4">
-                  <div className="flex flex-col items-center">
-                    <div className="mt-1.5 h-2.5 w-2.5 rounded-full border-2"
-                      style={{ borderColor: dotColor, backgroundColor: r.status === 'retired' ? 'transparent' : dotColor }} />
-                    {i < embeddingRolloutHistory.length - 1 && (
-                      <div className="w-px flex-1 bg-border" style={{ minHeight: 24 }} />
-                    )}
-                  </div>
-                  <div className="space-y-1 pb-4">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-sm font-medium">{r.version}</span>
-                      <EnvBadge env={r.env as Environment} />
-                      <span className="rounded px-1.5 py-0.5 text-[11px] font-medium"
-                        style={{ color: statusColor, backgroundColor: statusBg }}>
-                        {r.status}
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">{r.deployedAt}</p>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  )
-}
-
-// ────────────────────────────────────────────────────────────────
-// 응답품질 탭
-// ────────────────────────────────────────────────────────────────
-function GenerationTab({ version }: { version: RagVersion }) {
-  const latest = evalPipelineRuns[0]
-  const kpi    = ragVersionKpi[version]
-  const radar  = ragVersionRadar[version]
-  const trend  = ragVersionDailyTrend[version]
-
-  const donutData = [
-    { name: '통과', value: kpi.passRate },
-    { name: '실패', value: 100 - kpi.passRate },
-  ]
-
-  const HOURS = ['00:00', '06:00', '09:00', '12:00', '15:00', '18:00', '21:00']
-  const CATS  = ['법률/규정', '기술문서', '내부정책', '제품/서비스']
-  const heatMap = new Map<string, HeatmapCell>()
-  ragHeatmapData.forEach(d => heatMap.set(`${d.hour}|${d.category}`, d))
-
-  return (
-    <div className="space-y-5">
-      {/* 실행 중 배너 */}
-      {latest.status === 'running' && (
-        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-950/30">
-          <div className="mb-3 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin" style={{ color: C.blue }} />
-              <span className="text-sm font-semibold text-blue-700 dark:text-blue-400">
-                평가 실행 중 · {latest.id}
-              </span>
-            </div>
-            <span className="text-xs text-muted-foreground">
-              {latest.modelVersion} · {latest.datasetVersion} ({latest.datasetSize}개 케이스)
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            {latest.steps.map((step, i) => (
-              <div key={step.name} className="flex items-center gap-2">
-                <div className="flex items-center gap-1.5">
-                  <StepDot status={step.status} />
-                  <div>
-                    <p className="text-xs font-medium" style={{
-                      color: step.status === 'running' ? C.blue
-                           : step.status === 'success' ? C.green
-                           : 'hsl(var(--muted-foreground))',
-                    }}>
-                      {step.name}
-                    </p>
-                    {step.durationSec > 0 && (
-                      <p className="text-[10px] text-muted-foreground">{fmtSec(step.durationSec)}</p>
-                    )}
-                  </div>
-                </div>
-                {i < latest.steps.length - 1 && <div className="h-px w-8 rounded bg-border" />}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* KPI */}
-      <div className="grid grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="flex items-center gap-4 p-4">
-            <div style={{ width: 68, height: 68, flexShrink: 0 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={donutData} cx="50%" cy="50%" innerRadius={24} outerRadius={32}
-                    dataKey="value" strokeWidth={0} startAngle={90} endAngle={-270}>
-                    <Cell fill={kpi.gate === 'passed' ? C.green : C.red} />
-                    <Cell fill="hsl(var(--muted))" />
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">통과율</p>
-              <p className="text-2xl font-bold" style={{ color: kpi.gate === 'passed' ? C.green : C.red }}>{kpi.passRate}%</p>
-              <span className="flex items-center gap-1 text-[11px] font-medium" style={{ color: kpi.gate === 'passed' ? C.green : C.red }}>
-                {kpi.gate === 'passed' ? <ShieldCheck className="h-3 w-3" /> : <ShieldAlert className="h-3 w-3" />}
-                {kpi.gate === 'passed' ? 'Gate 통과' : 'Gate 차단'}
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">RAGAS Score</p>
-            <p className="mt-1 text-2xl font-bold" style={{ color: C.blue }}>{kpi.ragasScore.toFixed(3)}</p>
-            <p className="text-[11px] text-muted-foreground">Faithfulness {kpi.faithfulness.toFixed(3)}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-start justify-between">
-              <p className="text-xs text-muted-foreground">평균 소요시간</p>
-              <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-            </div>
-            <p className="mt-1 text-2xl font-bold">{Math.floor(kpi.avgDurationSec / 60)}m {kpi.avgDurationSec % 60}s</p>
-            <p className="text-[11px] text-muted-foreground">{kpi.dataset} · {kpi.datasetSize}개</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-start justify-between">
-              <p className="text-xs text-muted-foreground">추정 비용</p>
-              <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
-            </div>
-            <p className="mt-1 text-2xl font-bold">${kpi.costUsd.toFixed(2)}</p>
-            <p className="text-[11px] text-muted-foreground">Answer Relevancy {kpi.answerRelevancy.toFixed(3)}</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* 실행 이력 + 버전 비교 레이더 */}
-      <div className="grid grid-cols-3 gap-4">
-        <Card className="col-span-2 overflow-hidden p-0">
-          <div className="border-b px-4 py-3">
-            <SectionLabel>평가 파이프라인 실행 이력</SectionLabel>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b">
-                  {['실행 ID', '모델 버전', '데이터셋', '트리거', '통과율', 'Gate', '상태', '소요', '시작'].map(h => (
-                    <th key={h} className="px-4 py-2.5 text-left font-medium text-muted-foreground">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {evalPipelineRuns.map(run => (
-                  <tr key={run.id} className="border-b transition-colors hover:bg-muted/30">
-                    <td className="px-4 py-2.5 font-mono">
-                      <Link href={`/dashboard/evaluation/rag/${run.id}`} className="text-primary hover:underline">
-                        {run.id}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-2.5 font-mono text-muted-foreground">{run.modelVersion}</td>
-                    <td className="px-4 py-2.5">
-                      <div>{run.datasetVersion}</div>
-                      <div className="text-muted-foreground">{run.datasetSize}개</div>
-                    </td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{run.trigger}</td>
-                    <td className="px-4 py-2.5">
-                      {run.passRate > 0 ? (
-                        <span className="font-bold" style={{ color: run.passRate >= 85 ? C.green : C.red }}>{run.passRate}%</span>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5"><GateBadge result={run.gateResult} /></td>
-                    <td className="px-4 py-2.5"><StatusBadge status={run.status} /></td>
-                    <td className="px-4 py-2.5 font-mono text-muted-foreground">{fmtSec(run.durationSec)}</td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{relTime(run.startedAt)}</td>
-                  </tr>
+        <CardContent className="p-0">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-muted/30">
+                {['지표', '임계값', '단위'].map(h => (
+                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">{h}</th>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <SectionLabel>버전 비교 레이더 · {version}</SectionLabel>
-            <ResponsiveContainer width="100%" height={210}>
-              <RadarChart data={radar} margin={{ top: 5, right: 20, bottom: 5, left: 20 }}>
-                <PolarGrid stroke={CHART_GRID} />
-                <PolarAngleAxis 
-                  dataKey="metric" 
-                  tick={{ fill: CHART_TICK, fontSize: 10 }} 
-                  className="text-muted-foreground"
-                />
-                <Radar name={version}   dataKey="current"  stroke={C.blue}   fill={C.blue}   fillOpacity={0.2}  strokeWidth={2} />
-                <Radar name="이전 버전" dataKey="previous" stroke={C.purple} fill={C.purple} fillOpacity={0.08} strokeWidth={1.5} strokeDasharray="4 4" />
-                <Tooltip contentStyle={TOOLTIP_STYLE} />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-              </RadarChart>
-            </ResponsiveContainer>
-            <div className="mt-2 space-y-2 border-t pt-3">
-              {radar.map(row => {
-                const delta = ((row.current - row.previous) / row.previous * 100).toFixed(1)
-                const up = row.current > row.previous
-                return (
-                  <div key={row.metric} className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">{row.metric}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-semibold" style={{ color: up ? C.green : C.red }}>
-                        {row.current.toFixed(1)}%
-                      </span>
-                      <span className="font-mono text-[10px]" style={{ color: up ? C.green : C.red }}>
-                        {up ? '+' : ''}{delta}%
-                      </span>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* 트렌드 + 카테고리 분포 */}
-      <div className="grid grid-cols-2 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <SectionLabel>일별 성능 트렌드 (5일) · {version}</SectionLabel>
-            <ResponsiveContainer width="100%" height={200}>
-              <ComposedChart data={trend} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                <CartesianGrid stroke={CHART_GRID} strokeDasharray="3 3" vertical={false} />
-                <XAxis 
-                  dataKey="day" 
-                  tick={{ fill: CHART_TICK, fontSize: 10 }} 
-                  className="text-muted-foreground"
-                  axisLine={{ stroke: 'hsl(var(--border))' }}
-                  tickLine={{ stroke: 'hsl(var(--border))' }}
-                />
-                <YAxis 
-                  domain={[65, 100]} 
-                  tick={{ fill: CHART_TICK, fontSize: 10 }} 
-                  className="text-muted-foreground"
-                  axisLine={{ stroke: 'hsl(var(--border))' }}
-                  tickLine={{ stroke: 'hsl(var(--border))' }}
-                />
-                <Tooltip contentStyle={TOOLTIP_STYLE} />
-                <Line type="monotone" dataKey="passRate"     stroke={C.green}  strokeWidth={2} dot={{ r: 3, fill: C.green }}  name="통과율" />
-                <Line type="monotone" dataKey="faithfulness" stroke={C.blue}   strokeWidth={2} dot={{ r: 3, fill: C.blue }}   name="Faithfulness" />
-                <Line type="monotone" dataKey="ragasScore"   stroke={C.purple} strokeWidth={2} dot={{ r: 3, fill: C.purple }} name="RAGAS" strokeDasharray="5 5" />
-                <Legend wrapperStyle={{ fontSize: 10 }} />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <SectionLabel>카테고리별 통과 · 실패 분포</SectionLabel>
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={ragFlowData} layout="vertical" margin={{ top: 0, right: 10, left: 10, bottom: 0 }}>
-                <CartesianGrid stroke={CHART_GRID} strokeDasharray="3 3" horizontal={false} />
-                <XAxis 
-                  type="number" 
-                  tick={{ fill: CHART_TICK, fontSize: 10 }} 
-                  className="text-muted-foreground"
-                  axisLine={{ stroke: 'hsl(var(--border))' }}
-                  tickLine={{ stroke: 'hsl(var(--border))' }}
-                />
-                <YAxis 
-                  type="category" 
-                  dataKey="category" 
-                  tick={{ fill: CHART_TICK, fontSize: 10 }} 
-                  width={70} 
-                  className="text-muted-foreground"
-                  axisLine={{ stroke: 'hsl(var(--border))' }}
-                  tickLine={{ stroke: 'hsl(var(--border))' }}
-                />
-                <Tooltip contentStyle={TOOLTIP_STYLE} />
-                <Bar dataKey="통과" stackId="a" fill={C.green} fillOpacity={0.8} />
-                <Bar dataKey="실패" stackId="a" fill={C.red}   fillOpacity={0.8} radius={[0, 3, 3, 0]} />
-                <Legend wrapperStyle={{ fontSize: 10 }} />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* 히트맵 */}
-      <Card>
-        <CardContent className="p-4">
-          <SectionLabel>시간대별 쿼리 통과율 히트맵</SectionLabel>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr>
-                  <th className="pb-2 pr-4 text-left font-medium text-muted-foreground" style={{ minWidth: 80 }}>카테고리</th>
-                  {HOURS.map(h => (
-                    <th key={h} className="pb-2 text-center font-medium text-muted-foreground" style={{ minWidth: 76 }}>{h}</th>
-                  ))}
+              </tr>
+            </thead>
+            <tbody>
+              {criteria.map(c => (
+                <tr key={c.key} className="border-b transition-colors hover:bg-muted/20">
+                  <td className="px-4 py-3 font-medium">{c.label}</td>
+                  <td className="px-4 py-3">
+                    <input
+                      type="number"
+                      step={c.unit === '%' || c.unit === 'ms' ? 1 : 0.01}
+                      min={0}
+                      value={c.threshold}
+                      onChange={e => handleChange(c.key, e.target.value)}
+                      className="w-28 rounded border bg-background px-2 py-1 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                  </td>
+                  <td className="px-4 py-3 text-xs text-muted-foreground">
+                    {c.unit || '0 ~ 1 범위'}
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {CATS.map(cat => (
-                  <tr key={cat}>
-                    <td className="py-1 pr-4 font-medium text-muted-foreground">{cat}</td>
-                    {HOURS.map(h => {
-                      const cell = heatMap.get(`${h}|${cat}`)
-                      if (!cell) return (
-                        <td key={h} className="px-1 py-1">
-                          <div className="rounded bg-muted py-2 text-center">
-                            <span className="text-muted-foreground">-</span>
-                          </div>
-                        </td>
-                      )
-                      const { bg, text } = heatCell(cell.passRate)
-                      return (
-                        <td key={h} className="px-1 py-1">
-                          <div className="rounded py-1.5 text-center" style={{ backgroundColor: bg }}>
-                            <div className="font-bold" style={{ color: text }}>{cell.passRate}%</div>
-                            <div className="text-[10px] text-muted-foreground">{cell.count}건</div>
-                          </div>
-                        </td>
-                      )
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="mt-3 flex items-center gap-3">
-              <span className="text-[10px] text-muted-foreground">통과율:</span>
-              {[
-                { label: '≥90%', bg: 'rgba(34,197,94,0.2)',   text: '#16a34a' },
-                { label: '≥80%', bg: 'rgba(34,197,94,0.1)',   text: '#22c55e' },
-                { label: '≥70%', bg: 'rgba(245,158,11,0.15)', text: '#d97706' },
-                { label: '≥60%', bg: 'rgba(249,115,22,0.15)', text: '#ea580c' },
-                { label: '<60%', bg: 'rgba(239,68,68,0.15)',  text: '#dc2626' },
-              ].map(({ label, bg, text }) => (
-                <span key={label} className="flex items-center gap-1 text-[10px]">
-                  <span className="inline-block h-3 w-5 rounded" style={{ backgroundColor: bg }} />
-                  <span style={{ color: text }}>{label}</span>
-                </span>
               ))}
-            </div>
-          </div>
+            </tbody>
+          </table>
         </CardContent>
       </Card>
     </div>
   )
 }
 
-// ────────────────────────────────────────────────────────────────
-// 메인 페이지
-// ────────────────────────────────────────────────────────────────
-export default function EvaluationPage() {
-  const [version, setVersion] = useState<RagVersion>(ragVersions[0])
-  const kpi = ragVersionKpi[version]
+// ── KFP 데이터 타입 ──────────────────────────────────────────────
+
+interface KFPRun {
+  runId: string
+  displayName: string
+  rcVersion: string
+  datasetName: string
+  datasetVersion: string
+  questionCount: number
+  status: string
+  createdAt: string
+  finishedAt: string
+  metrics: Record<string, number> | null
+}
+
+interface ApprovalState {
+  status: ApprovalStatus
+  approvedBy?: string
+  approvedAt?: string
+}
+
+// ── 탭 3: RC 목록 ────────────────────────────────────────────────
+
+function RCListTab({ runs, loading, approvalStates }: {
+  runs: KFPRun[]
+  loading: boolean
+  approvalStates: Record<string, ApprovalState>
+}) {
+  function gateFromMetrics(metrics: Record<string, number> | null): PassFail | null {
+    if (!metrics) return null
+    return (
+      metrics.ragas_score       >= 0.80 &&
+      metrics.faithfulness      >= 0.85 &&
+      metrics.answer_relevancy  >= 0.75 &&
+      metrics.context_precision >= 0.65 &&
+      metrics.context_recall    >= 0.65 &&
+      metrics.pass_rate         >= 82.0 &&
+      metrics.latency_ms        <= 2200
+    ) ? 'Pass' : 'Fail'
+  }
+
+  function deployStatus(runId: string, gate: PassFail | null): DeployStatus {
+    const approval = approvalStates[runId]?.status ?? 'Pending'
+    if (approval === 'Approved') return 'deployed'
+    if (approval === 'Rejected') return 'blocked'
+    if (gate === 'Pass') return 'ready'
+    return 'blocked'
+  }
+
+  function fmtDate(iso: string) {
+    if (!iso) return '-'
+    return new Date(iso).toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' })
+  }
 
   return (
-    <div className="space-y-5 p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <FlaskConical className="h-5 w-5" style={{ color: C.purple }} />
-            <h1 className="text-lg font-bold">RAG Evaluation</h1>
-          </div>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            MLflow · Prometheus · Argo CD 연동 · 30s 자동 갱신
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">버전</span>
-          <Select value={version} onValueChange={(v) => setVersion(v as RagVersion)}>
-            <SelectTrigger className="h-8 w-[120px] text-xs">
+    <div className="space-y-4">
+      <p className="text-xs text-muted-foreground">
+        RC (Release Candidate) — 운영 배포 전 검토 대상 후보 버전. RAGAS 평가를 통과한 RC만 승인 후 배포됩니다.
+      </p>
+      <Card>
+        <CardContent className="p-0">
+          {loading ? (
+            <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
+              KFP에서 데이터를 불러오는 중...
+            </div>
+          ) : runs.length === 0 ? (
+            <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
+              평가 실행 이력이 없습니다.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b bg-muted/30">
+                    {['버전 / 데이터셋', 'RAGAS 지표', 'Gate', '승인 상태', '승인자 / 일시', '배포 상태'].map(h => (
+                      <th key={h} className="px-4 py-3 text-left font-semibold text-muted-foreground">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {runs.map(run => {
+                    const gate = gateFromMetrics(run.metrics)
+                    const approval = approvalStates[run.runId] ?? { status: 'Pending' }
+                    return (
+                      <tr key={run.runId} className="border-b transition-colors hover:bg-muted/20">
+                        <td className="px-4 py-3">
+                          <p className="font-semibold font-mono">{run.rcVersion}</p>
+                          <p className="text-muted-foreground">{run.datasetName} {run.datasetVersion}</p>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">{fmtDate(run.createdAt)}</p>
+                        </td>
+                        <td className="px-4 py-3">
+                          {run.metrics ? (
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-muted-foreground w-20">RAGAS</span>
+                                <span className="font-bold font-mono" style={{ color: (run.metrics.ragas_score ?? 0) >= 0.80 ? C.green : C.red }}>
+                                  {(run.metrics.ragas_score ?? 0).toFixed(3)}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-muted-foreground w-20">통과율</span>
+                                <span className="font-bold font-mono" style={{ color: (run.metrics.pass_rate ?? 0) >= 85 ? C.green : C.red }}>
+                                  {run.metrics.pass_rate ?? '-'}%
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-muted-foreground w-20">Latency</span>
+                                <span className="font-mono" style={{ color: (run.metrics.latency_ms ?? 9999) <= 2000 ? C.green : C.red }}>
+                                  {(run.metrics.latency_ms ?? 0).toLocaleString()}ms
+                                </span>
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground text-[11px]">
+                              {run.status === 'SUCCEEDED' ? '지표 없음' : run.status}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {gate ? <GateBadge gate={gate} /> : <span className="text-muted-foreground">-</span>}
+                        </td>
+                        <td className="px-4 py-3">
+                          <ApprovalBadge status={approval.status} />
+                        </td>
+                        <td className="px-4 py-3">
+                          {approval.approvedBy ? (
+                            <>
+                              <p className="font-medium">{approval.approvedBy}</p>
+                              <p className="text-muted-foreground">{approval.approvedAt}</p>
+                            </>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <DeployBadge status={deployStatus(run.runId, gate)} />
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+// ── 탭 4: 승인 제어판 ────────────────────────────────────────────
+
+function ApprovalTab({ runs, loading, approvalStates, onApprove, onReject }: {
+  runs: KFPRun[]
+  loading: boolean
+  approvalStates: Record<string, ApprovalState>
+  onApprove: (runId: string) => void
+  onReject: (runId: string) => void
+}) {
+  const succeededRuns = runs.filter(r => r.status === 'SUCCEEDED' && r.metrics)
+  const [selectedId, setSelectedId] = useState<string>('')
+
+  useEffect(() => {
+    if (succeededRuns.length > 0 && !selectedId) {
+      setSelectedId(succeededRuns[0].runId)
+    }
+  }, [succeededRuns, selectedId])
+
+  const selected = succeededRuns.find(r => r.runId === selectedId)
+  const currentApproval = approvalStates[selectedId] ?? { status: 'Pending' }
+
+  const isLatency = (key: string) => key === 'latency_ms'
+
+  const criteriaRows = selected?.metrics ? [
+    { key: 'ragas_score',       label: 'RAGAS 종합 점수',   threshold: 0.80,  actual: selected.metrics.ragas_score ?? 0,       unit: '' },
+    { key: 'faithfulness',      label: 'Faithfulness',        threshold: 0.85,  actual: selected.metrics.faithfulness ?? 0,      unit: '' },
+    { key: 'answer_relevancy',  label: 'Answer Relevancy',    threshold: 0.75,  actual: selected.metrics.answer_relevancy ?? 0,  unit: '' },
+    { key: 'context_precision', label: 'Context Precision',   threshold: 0.65,  actual: selected.metrics.context_precision ?? 0, unit: '' },
+    { key: 'context_recall',    label: 'Context Recall',      threshold: 0.65,  actual: selected.metrics.context_recall ?? 0,    unit: '' },
+    { key: 'pass_rate',         label: '체감 응답 통과율',   threshold: 82,    actual: selected.metrics.pass_rate ?? 0,         unit: '%' },
+    { key: 'latency_ms',        label: '응답 속도 (Latency)', threshold: 2200,  actual: selected.metrics.latency_ms ?? 0,        unit: 'ms' },
+  ] : []
+
+  function isPassing(row: CriteriaRow) {
+    return isLatency(row.key) ? row.actual <= row.threshold : row.actual >= row.threshold
+  }
+
+  if (loading) return (
+    <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
+      KFP에서 데이터를 불러오는 중...
+    </div>
+  )
+
+  if (succeededRuns.length === 0) return (
+    <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
+      완료된 평가 실행이 없습니다.
+    </div>
+  )
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardContent className="flex items-center gap-4 p-4">
+          <span className="text-sm font-medium text-muted-foreground shrink-0">RC 선택</span>
+          <Select value={selectedId} onValueChange={setSelectedId}>
+            <SelectTrigger className="h-8 w-[320px] text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {ragVersions.map(v => (
-                <SelectItem key={v} value={v} className="text-xs">
+              {succeededRuns.map(run => (
+                <SelectItem key={run.runId} value={run.runId} className="text-xs">
                   <span className="flex items-center gap-2">
-                    {v}
-                    {v === ragVersions[0] && (
-                      <span className="rounded px-1 py-0.5 text-[10px] font-medium" style={{ color: C.green, backgroundColor: 'rgba(34,197,94,0.1)' }}>
-                        최신
-                      </span>
-                    )}
+                    <span className="font-mono">{run.rcVersion}</span>
+                    <span className="text-muted-foreground">·</span>
+                    <span>{run.datasetName}</span>
+                    <ApprovalBadge status={approvalStates[run.runId]?.status ?? 'Pending'} />
                   </span>
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-          <span className="rounded border px-2 py-1 text-xs text-muted-foreground">{kpi.dataset}</span>
-          <span className="rounded border px-2 py-1 text-xs font-medium" style={{ color: kpi.gate === 'passed' ? C.green : C.red, borderColor: kpi.gate === 'passed' ? C.green + '66' : C.red + '66' }}>
-            {kpi.gate === 'passed' ? 'Gate 통과' : 'Gate 차단'}
-          </span>
-          <button className="flex items-center gap-1 rounded border px-2 py-1 text-xs text-muted-foreground hover:bg-muted">
-            <RefreshCw className="h-3 w-3" /> 새로고침
-          </button>
+          {selected && (
+            <div className="flex items-center gap-2 ml-auto">
+              <GateBadge gate={
+                selected.metrics && (
+                  selected.metrics.ragas_score       >= 0.80 &&
+                  selected.metrics.faithfulness      >= 0.85 &&
+                  selected.metrics.answer_relevancy  >= 0.75 &&
+                  selected.metrics.context_precision >= 0.65 &&
+                  selected.metrics.context_recall    >= 0.65 &&
+                  selected.metrics.pass_rate         >= 82.0 &&
+                  selected.metrics.latency_ms        <= 2200
+                ) ? 'Pass' : 'Fail'
+              } />
+              <ApprovalBadge status={currentApproval.status} />
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {selected && (
+        <>
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-semibold">
+                기준치 vs 실제 점수 — {selected.rcVersion}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/30">
+                    {['지표', '기준치', '실제값', '결과'].map(h => (
+                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {criteriaRows.map(row => {
+                    const pass = isPassing(row)
+                    const fmt = (v: number) =>
+                      row.unit === 'ms' ? `${v.toLocaleString()}ms`
+                      : row.unit === '%' ? `${v}%`
+                      : v.toFixed(3)
+                    return (
+                      <tr key={row.key} className="border-b transition-colors hover:bg-muted/20">
+                        <td className="px-4 py-3 font-medium">{row.label}</td>
+                        <td className="px-4 py-3 font-mono text-muted-foreground">
+                          {isLatency(row.key) ? `≤ ${fmt(row.threshold)}` : `≥ ${fmt(row.threshold)}`}
+                        </td>
+                        <td className="px-4 py-3 font-mono font-semibold" style={{ color: pass ? C.green : C.red }}>
+                          {fmt(row.actual)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <RowPassFail pass={pass} />
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+
+          <div className="flex items-center gap-3">
+            {currentApproval.status === 'Pending' ? (
+              <>
+                <Button size="sm" className="gap-2" style={{ backgroundColor: C.green, color: '#fff' }}
+                  onClick={() => onApprove(selectedId)}>
+                  <CheckCircle2 className="h-4 w-4" /> 승인
+                </Button>
+                <Button size="sm" variant="destructive" className="gap-2"
+                  onClick={() => onReject(selectedId)}>
+                  <XCircle className="h-4 w-4" /> 반려
+                </Button>
+              </>
+            ) : (
+              <div className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm text-muted-foreground">
+                <Clock className="h-4 w-4" />
+                이미 처리된 RC입니다 ({currentApproval.status})
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ── 메인 페이지 ──────────────────────────────────────────────────
+
+export default function QualityGatePage() {
+  const [kfpRuns, setKfpRuns] = useState<KFPRun[]>([])
+  const [loading, setLoading] = useState(true)
+  const [approvalStates, setApprovalStates] = useState<Record<string, ApprovalState>>({})
+
+  useEffect(() => {
+    fetch('/api/kfp/runs')
+      .then(r => r.json())
+      .then(data => {
+        setKfpRuns(data.runs ?? [])
+        const initial: Record<string, ApprovalState> = {}
+        for (const run of data.runs ?? []) {
+          initial[run.runId] = { status: 'Pending' }
+        }
+        setApprovalStates(initial)
+      })
+      .finally(() => setLoading(false))
+  }, [])
+
+  function handleApprove(runId: string) {
+    setApprovalStates(prev => ({
+      ...prev,
+      [runId]: { status: 'Approved', approvedBy: '이승연', approvedAt: new Date().toLocaleString('ko-KR') },
+    }))
+  }
+
+  function handleReject(runId: string) {
+    setApprovalStates(prev => ({
+      ...prev,
+      [runId]: { status: 'Rejected', approvedBy: '이승연', approvedAt: new Date().toLocaleString('ko-KR') },
+    }))
+  }
+
+  return (
+    <div className="space-y-5 p-6">
+      <div className="flex items-center gap-2">
+        <ShieldCheck className="h-5 w-5" style={{ color: C.blue }} />
+        <div>
+          <h1 className="text-lg font-bold">퀄리티 게이트</h1>
+          <p className="text-xs text-muted-foreground">
+            RC 합격 기준 통과 여부 확인 및 운영 클러스터 배포 승인 관리
+          </p>
         </div>
       </div>
 
-      <Tabs defaultValue="retrieval">
+      <Tabs defaultValue="dataset">
         <TabsList>
-          <TabsTrigger value="retrieval">검색품질</TabsTrigger>
-          <TabsTrigger value="generation">응답품질</TabsTrigger>
+          <TabsTrigger value="dataset">테스트 데이터셋</TabsTrigger>
+          <TabsTrigger value="criteria">합격 기준 설정</TabsTrigger>
+          <TabsTrigger value="rc-list">RC 목록</TabsTrigger>
+          <TabsTrigger value="approval">승인 제어판</TabsTrigger>
         </TabsList>
-        <TabsContent value="retrieval" className="mt-5">
-          <RetrievalTab version={version} />
+
+        <TabsContent value="dataset" className="mt-5">
+          <DatasetTab />
         </TabsContent>
-        <TabsContent value="generation" className="mt-5">
-          <GenerationTab version={version} />
+        <TabsContent value="criteria" className="mt-5">
+          <CriteriaTab />
+        </TabsContent>
+        <TabsContent value="rc-list" className="mt-5">
+          <RCListTab runs={kfpRuns} loading={loading} approvalStates={approvalStates} />
+        </TabsContent>
+        <TabsContent value="approval" className="mt-5">
+          <ApprovalTab
+            runs={kfpRuns}
+            loading={loading}
+            approvalStates={approvalStates}
+            onApprove={handleApprove}
+            onReject={handleReject}
+          />
         </TabsContent>
       </Tabs>
     </div>
