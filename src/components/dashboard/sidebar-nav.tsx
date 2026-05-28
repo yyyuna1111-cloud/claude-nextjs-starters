@@ -3,15 +3,16 @@
 import * as React from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Play, Server, ShieldCheck, ChevronDown, Network, Sun, Moon } from 'lucide-react'
+
+import { LayoutDashboard, GitBranch, Server, ShieldCheck, ChevronDown, Network, Sun, Moon, FlaskConical, Database } from 'lucide-react'
 import { useTheme } from 'next-themes'
 
 import { cn } from '@/lib/utils'
 
 const navItems = [
   { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
-  { href: '/dashboard/train', label: 'Train', icon: Play },
   { href: '/dashboard/serving', label: 'Service Operation', icon: Server },
+  { href: '/dashboard/test-dataset', label: 'Eval Dataset', icon: Database },
   { href: '/dashboard/evaluation', label: '퀄리티 게이트', icon: ShieldCheck },
   { href: '/dashboard/infrastructure', label: 'Infrastructure', icon: Network },
 ]
