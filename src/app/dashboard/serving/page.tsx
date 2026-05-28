@@ -249,7 +249,7 @@ export default function ServingPage() {
     <div className="space-y-8 pb-10">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Service Operations</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Service Operation</h1>
           <p className="text-muted-foreground text-sm">
             GitOps 배포 주기와 실시간 모델 추론 상태를 통합 관리합니다.
           </p>
