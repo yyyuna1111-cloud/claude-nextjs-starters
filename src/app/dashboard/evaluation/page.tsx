@@ -9,6 +9,8 @@ import {
   Clock,
   Save,
   ChevronRight,
+  Upload,
+  FolderPlus,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -20,12 +22,22 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Sheet,
   SheetContent,
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import { cn } from '@/lib/utils'
 
 // ── 색상 팔레트 ──────────────────────────────────────────────────
 const C = {
@@ -39,37 +51,9 @@ const C = {
 
 // ── 목 데이터 ────────────────────────────────────────────────────
 
-type ActiveStatus = 'active' | 'inactive'
 type ApprovalStatus = 'Pending' | 'Approved' | 'Rejected'
 type DeployStatus = 'deployed' | 'ready' | 'blocked' | '-'
 type PassFail = 'Pass' | 'Fail'
-
-interface Dataset {
-  id: string
-  name: string
-  version: string
-  questionCount: number
-  categories: { name: string; count: number }[]
-  createdAt: string
-  lastUsedAt: string
-  status: ActiveStatus
-}
-
-interface SampleQuestion {
-  id: number
-  question: string
-  answer: string
-  category: string
-}
-
-interface DatasetUsageHistory {
-  rcId: string
-  rcVersion: string
-  evaluatedAt: string
-  ragasScore: number
-  passRate: number
-  gate: PassFail
-}
 
 interface CriteriaMetric {
   key: string
@@ -104,46 +88,6 @@ interface CriteriaRow {
   unit: string
 }
 
-const mockDatasets: Dataset[] = [
-  {
-    id: 'ds-001',
-    name: '세무·법률 QA 셋',
-    version: 'v1.0',
-    questionCount: 20,
-    categories: [
-      { name: '법률/규정', count: 10 },
-      { name: '내부정책',  count: 5  },
-      { name: '계약/서류', count: 5  },
-    ],
-    createdAt: '2026-05-27',
-    lastUsedAt: '2026-05-27',
-    status: 'active',
-  },
-]
-
-const mockSampleQuestions: Record<string, SampleQuestion[]> = {
-  'ds-001': [
-    { id: 1,  question: '법인세법상 각 사업연도 소득에 대한 법인세 세율은?',          answer: '과세표준 2억 이하 9%, 2억 초과~200억 이하 19%, 200억 초과~3000억 이하 21%, 3000억 초과 24%입니다.', category: '법률/규정' },
-    { id: 2,  question: '부가가치세 일반과세자의 신고·납부 기한은?',                  answer: '1기(1~6월) 확정신고는 7월 25일, 2기(7~12월) 확정신고는 다음 해 1월 25일까지입니다.',               category: '법률/규정' },
-    { id: 3,  question: '소득세법상 근로소득 원천징수 시기는?',                       answer: '근로소득을 지급하는 달의 다음 달 10일까지 원천징수한 세액을 납부해야 합니다.',                      category: '법률/규정' },
-    { id: 4,  question: '세금계산서 수취 후 매입세액 공제 신청 기한은?',              answer: '해당 과세기간의 확정신고 기한 내에 신청해야 하며, 기한 후 신고 시 공제가 제한될 수 있습니다.',      category: '내부정책' },
-    { id: 5,  question: '법인카드 사용 후 증빙 제출 기한은?',                         answer: '사용일로부터 5영업일 이내에 경비 처리 시스템에 영수증을 등록해야 합니다.',                          category: '내부정책' },
-    { id: 6,  question: '용역 계약서상 세금계산서 발급 조건은?',                      answer: '용역 공급 시기(계약서상 대금 지급일 또는 용역 완료일) 기준으로 발급하며, 선금 수령 시 수령일 기준으로 발급합니다.', category: '계약/서류' },
-    { id: 7,  question: '원천징수 이행상황신고서 제출 시 첨부서류는?',                answer: '원천징수 이행상황신고서 본지와 원천징수세액 납부서를 함께 제출하며, 전자신고 시 별도 첨부 불필요합니다.', category: '계약/서류' },
-    { id: 8,  question: '수정세금계산서를 발급할 수 있는 사유는?',                    answer: '착오 기재, 공급가액 변동, 계약 해제, 환입 등의 사유 발생 시 수정세금계산서를 발급할 수 있습니다.',  category: '법률/규정' },
-    { id: 9,  question: '전자세금계산서 발급 의무 대상과 기한은?',                    answer: '법인사업자 및 직전연도 공급가액 8천만원 이상 개인사업자는 공급 시기 다음 날까지 발급해야 합니다.',  category: '법률/규정' },
-    { id: 10, question: '외화 용역 계약 시 세금계산서 공급가액 산정 기준은?',         answer: '공급 시기의 기준환율 또는 재정환율을 적용하여 원화로 환산한 금액을 공급가액으로 기재합니다.',        category: '계약/서류' },
-  ],
-}
-
-const mockUsageHistory: Record<string, DatasetUsageHistory[]> = {
-  'ds-001': [
-    { rcId: 'eval-v2.4.0-rc5-v1.0', rcVersion: 'v2.4.0-rc5', evaluatedAt: '2026-05-27 17:20', ragasScore: 0.9242, passRate: 92.4, gate: 'Pass' },
-    { rcId: 'eval-v2.4.0-rc4-v1.0', rcVersion: 'v2.4.0-rc4', evaluatedAt: '2026-05-27 17:44', ragasScore: 0.9662, passRate: 89.3, gate: 'Fail' },
-    { rcId: 'eval-v2.4.0-rc3-v1.0', rcVersion: 'v2.4.0-rc3', evaluatedAt: '2026-05-27 17:41', ragasScore: 0.8418, passRate: 87.3, gate: 'Fail' },
-  ],
-}
-
 const defaultCriteria: CriteriaMetric[] = [
   { key: 'ragasScore',        label: 'RAGAS 종합 점수',   threshold: 0.80, unit: '' },
   { key: 'faithfulness',      label: 'Faithfulness',        threshold: 0.85, unit: '' },
@@ -154,75 +98,7 @@ const defaultCriteria: CriteriaMetric[] = [
   { key: 'latencyMs',         label: '응답 속도 (Latency)', threshold: 2200, unit: 'ms' },
 ]
 
-const mockRCList: RCItem[] = [
-  {
-    id: 'rc-2026-0523-01',
-    version: 'v2.3.1',
-    pipeline: 'rag-pipeline-prod',
-    ragasScore: 0.873,
-    faithfulness: 0.901,
-    answerRelevancy: 0.856,
-    contextPrecision: 0.812,
-    contextRecall: 0.789,
-    passRate: 91.2,
-    latencyMs: 1340,
-    gate: 'Pass',
-    approvalStatus: 'Approved',
-    approvedBy: '이승연',
-    approvedAt: '2026-05-24 14:32',
-    deployStatus: 'deployed',
-  },
-  {
-    id: 'rc-2026-0521-01',
-    version: 'v2.3.0',
-    pipeline: 'rag-pipeline-prod',
-    ragasScore: 0.791,
-    faithfulness: 0.812,
-    answerRelevancy: 0.803,
-    contextPrecision: 0.754,
-    contextRecall: 0.741,
-    passRate: 83.7,
-    latencyMs: 1820,
-    gate: 'Fail',
-    approvalStatus: 'Rejected',
-    approvedBy: '이승연',
-    approvedAt: '2026-05-22 09:15',
-    deployStatus: 'blocked',
-  },
-  {
-    id: 'rc-2026-0526-01',
-    version: 'v2.4.0-rc1',
-    pipeline: 'rag-pipeline-staging',
-    ragasScore: 0.841,
-    faithfulness: 0.868,
-    answerRelevancy: 0.847,
-    contextPrecision: 0.803,
-    contextRecall: 0.776,
-    passRate: 88.4,
-    latencyMs: 1560,
-    gate: 'Pass',
-    approvalStatus: 'Pending',
-    deployStatus: 'ready',
-  },
-]
-
 // ── 공통 컴포넌트 ─────────────────────────────────────────────────
-
-function ActiveBadge({ status }: { status: ActiveStatus }) {
-  const isActive = status === 'active'
-  return (
-    <span
-      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium"
-      style={{
-        color: isActive ? C.green : 'hsl(var(--muted-foreground))',
-        backgroundColor: isActive ? 'rgba(34,197,94,0.1)' : 'hsl(var(--muted))',
-      }}
-    >
-      <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ backgroundColor: isActive ? C.green : 'hsl(var(--muted-foreground))' }} />
-      {isActive ? 'Active' : 'Inactive'}
-    </span>
-  )
-}
 
 function GateBadge({ gate }: { gate: PassFail }) {
   return gate === 'Pass' ? (
@@ -279,6 +155,107 @@ function RowPassFail({ pass }: { pass: boolean }) {
 
 // ── 탭 1: 테스트 데이터셋 ─────────────────────────────────────────
 
+type ActiveStatus = 'active' | 'inactive'
+
+interface Dataset {
+  id: string
+  name: string
+  version: string
+  questionCount: number
+  categories: { name: string; count: number }[]
+  createdAt: string
+  lastUsedAt: string
+  status: ActiveStatus
+}
+
+interface SampleQuestion {
+  id: number
+  question: string
+  answer: string
+  category: string
+}
+
+interface DatasetUsageHistory {
+  rcId: string
+  rcVersion: string
+  evaluatedAt: string
+  ragasScore: number
+  passRate: number
+  gate: PassFail
+}
+
+const mockDatasets: Dataset[] = [
+  {
+    id: 'ds-001',
+    name: '세무·법률 QA 셋',
+    version: 'v1.0',
+    questionCount: 20,
+    categories: [
+      { name: '법률/규정', count: 10 },
+      { name: '내부정책',  count: 5  },
+      { name: '계약/서류', count: 5  },
+    ],
+    createdAt: '2026-05-27',
+    lastUsedAt: '2026-05-27',
+    status: 'active',
+  },
+]
+
+const mockSampleQuestions: Record<string, SampleQuestion[]> = {
+  'ds-001': [
+    { id: 1,  question: '법인세법상 각 사업연도 소득에 대한 법인세 세율은?',          answer: '과세표준 2억 이하 9%, 2억 초과~200억 이하 19%, 200억 초과~3000억 이하 21%, 3000억 초과 24%입니다.', category: '법률/규정' },
+    { id: 2,  question: '부가가치세 일반과세자의 신고·납부 기한은?',                  answer: '1기(1~6월) 확정신고는 7월 25일, 2기(7~12월) 확정신고는 다음 해 1월 25일까지입니다.',               category: '법률/규정' },
+    { id: 3,  question: '소득세법상 근로소득 원천징수 시기는?',                       answer: '근로소득을 지급하는 달의 다음 달 10일까지 원천징수한 세액을 납부해야 합니다.',                      category: '법률/규정' },
+    { id: 4,  question: '세금계산서 수취 후 매입세액 공제 신청 기한은?',              answer: '해당 과세기간의 확정신고 기한 내에 신청해야 하며, 기한 후 신고 시 공제가 제한될 수 있습니다.',      category: '내부정책' },
+    { id: 5,  question: '법인카드 사용 후 증빙 제출 기한은?',                         answer: '사용일로부터 5영업일 이내에 경비 처리 시스템에 영수증을 등록해야 합니다.',                          category: '내부정책' },
+    { id: 6,  question: '용역 계약서상 세금계산서 발급 조건은?',                      answer: '용역 공급 시기(계약서상 대금 지급일 또는 용역 완료일) 기준으로 발급하며, 선금 수령 시 수령일 기준으로 발급합니다.', category: '계약/서류' },
+    { id: 7,  question: '원천징수 이행상황신고서 제출 시 첨부서류는?',                answer: '원천징수 이행상황신고서 본지와 원천징수세액 납부서를 함께 제출하며, 전자신고 시 별도 첨부 불필요합니다.', category: '계약/서류' },
+    { id: 8,  question: '수정세금계산서를 발급할 수 있는 사유는?',                    answer: '착오 기재, 공급가액 변동, 계약 해제, 환입 등의 사유 발생 시 수정세금계산서를 발급할 수 있습니다.',  category: '법률/규정' },
+    { id: 9,  question: '전자세금계산서 발급 의무 대상과 기한은?',                    answer: '법인사업자 및 직전연도 공급가액 8천만원 이상 개인사업자는 공급 시기 다음 날까지 발급해야 합니다.',  category: '법률/규정' },
+    { id: 10, question: '외화 용역 계약 시 세금계산서 공급가액 산정 기준은?',         answer: '공급 시기의 기준환율 또는 재정환율을 적용하여 원화로 환산한 금액을 공급가액으로 기재합니다.',        category: '계약/서류' },
+  ],
+}
+
+const mockUsageHistory: Record<string, DatasetUsageHistory[]> = {
+  'ds-001': [
+    { rcId: 'eval-v2.4.0-rc5-v1.0', rcVersion: 'v2.4.0-rc5', evaluatedAt: '2026-05-27 17:20', ragasScore: 0.9242, passRate: 92.4, gate: 'Pass' },
+    { rcId: 'eval-v2.4.0-rc4-v1.0', rcVersion: 'v2.4.0-rc4', evaluatedAt: '2026-05-27 17:44', ragasScore: 0.9662, passRate: 89.3, gate: 'Fail' },
+    { rcId: 'eval-v2.4.0-rc3-v1.0', rcVersion: 'v2.4.0-rc3', evaluatedAt: '2026-05-27 17:41', ragasScore: 0.8418, passRate: 87.3, gate: 'Fail' },
+  ],
+}
+
+const DS_LABELS = ['FAQ', 'Contract', 'Technical', 'General'] as const
+type DsLabel = typeof DS_LABELS[number]
+
+const LABEL_STYLE: Record<DsLabel, string> = {
+  FAQ:       'border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/50',
+  Contract:  'border border-violet-200 dark:border-violet-800 text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-950/50',
+  Technical: 'border border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/50',
+  General:   'border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50',
+}
+const LABEL_ACTIVE: Record<DsLabel, string> = {
+  FAQ:       'bg-blue-500 dark:bg-blue-600 text-white border-blue-500 dark:border-blue-600',
+  Contract:  'bg-violet-500 dark:bg-violet-600 text-white border-violet-500 dark:border-violet-600',
+  Technical: 'bg-amber-500 dark:bg-amber-600 text-white border-amber-500 dark:border-amber-600',
+  General:   'bg-gray-500 dark:bg-gray-600 text-white border-gray-500 dark:border-gray-600',
+}
+
+function ActiveBadge({ status }: { status: ActiveStatus }) {
+  const isActive = status === 'active'
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium"
+      style={{
+        color: isActive ? C.green : 'hsl(var(--muted-foreground))',
+        backgroundColor: isActive ? 'rgba(34,197,94,0.1)' : 'hsl(var(--muted))',
+      }}
+    >
+      <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ backgroundColor: isActive ? C.green : 'hsl(var(--muted-foreground))' }} />
+      {isActive ? 'Active' : 'Inactive'}
+    </span>
+  )
+}
+
 function DatasetDetailSheet({ dataset, open, onClose }: {
   dataset: Dataset | null
   open: boolean
@@ -305,11 +282,8 @@ function DatasetDetailSheet({ dataset, open, onClose }: {
         </SheetHeader>
 
         <div className="space-y-6">
-          {/* 카테고리 분포 */}
           <div>
-            <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-              카테고리 분포
-            </p>
+            <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">카테고리 분포</p>
             <div className="space-y-2.5">
               {dataset.categories.map(cat => {
                 const pct = Math.round((cat.count / total) * 100)
@@ -320,10 +294,7 @@ function DatasetDetailSheet({ dataset, open, onClose }: {
                       <span className="text-muted-foreground">{cat.count}개 ({pct}%)</span>
                     </div>
                     <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                      <div
-                        className="h-full rounded-full transition-all"
-                        style={{ width: `${pct}%`, backgroundColor: C.blue }}
-                      />
+                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: C.blue }} />
                     </div>
                   </div>
                 )
@@ -331,7 +302,6 @@ function DatasetDetailSheet({ dataset, open, onClose }: {
             </div>
           </div>
 
-          {/* 질문 샘플 미리보기 */}
           <div>
             <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
               질문 샘플 미리보기 ({samples.length}건)
@@ -340,24 +310,17 @@ function DatasetDetailSheet({ dataset, open, onClose }: {
               {samples.map(s => (
                 <div key={s.id} className="rounded-lg border p-3 text-xs">
                   <div className="mb-1.5 flex items-start gap-2">
-                    <span className="mt-0.5 shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                      {s.category}
-                    </span>
+                    <span className="mt-0.5 shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{s.category}</span>
                     <p className="font-medium leading-relaxed">{s.question}</p>
                   </div>
-                  <p className="leading-relaxed text-muted-foreground pl-1 border-l-2 border-border ml-1">
-                    {s.answer}
-                  </p>
+                  <p className="leading-relaxed text-muted-foreground pl-1 border-l-2 border-border ml-1">{s.answer}</p>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* 사용 이력 */}
           <div>
-            <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-              사용 이력
-            </p>
+            <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">사용 이력</p>
             {history.length === 0 ? (
               <p className="text-xs text-muted-foreground">사용 이력이 없습니다.</p>
             ) : (
@@ -375,15 +338,9 @@ function DatasetDetailSheet({ dataset, open, onClose }: {
                       <tr key={h.rcId} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
                         <td className="px-3 py-2 font-mono font-medium">{h.rcVersion}</td>
                         <td className="px-3 py-2 text-muted-foreground">{h.evaluatedAt}</td>
-                        <td className="px-3 py-2 font-mono font-semibold" style={{ color: h.ragasScore >= 0.80 ? C.green : C.red }}>
-                          {h.ragasScore.toFixed(3)}
-                        </td>
-                        <td className="px-3 py-2 font-mono font-semibold" style={{ color: h.passRate >= 85 ? C.green : C.red }}>
-                          {h.passRate}%
-                        </td>
-                        <td className="px-3 py-2">
-                          <GateBadge gate={h.gate} />
-                        </td>
+                        <td className="px-3 py-2 font-mono font-semibold" style={{ color: h.ragasScore >= 0.80 ? C.green : C.red }}>{h.ragasScore.toFixed(3)}</td>
+                        <td className="px-3 py-2 font-mono font-semibold" style={{ color: h.passRate >= 85 ? C.green : C.red }}>{h.passRate}%</td>
+                        <td className="px-3 py-2"><GateBadge gate={h.gate} /></td>
                       </tr>
                     ))}
                   </tbody>
@@ -397,65 +354,333 @@ function DatasetDetailSheet({ dataset, open, onClose }: {
   )
 }
 
-function DatasetTab() {
-  const [selectedDs, setSelectedDs] = useState<Dataset | null>(null)
+interface EvalFile {
+  id: string
+  name: string
+  label: string
+  folder: string
+  size: number
+  uploadedAt: string
+}
+
+function EvalFilePreviewSheet({ file, open, onClose }: {
+  file: EvalFile | null
+  open: boolean
+  onClose: () => void
+}) {
+  const [rows, setRows] = useState<Record<string, string>[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!file || !open) return
+    setLoading(true)
+    setError(null)
+    fetch(`/api/eval-dataset/preview?key=${encodeURIComponent(file.id)}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.error) throw new Error(d.error)
+        setRows(d.rows ?? [])
+      })
+      .catch(() => setError('미리보기를 불러오지 못했습니다.'))
+      .finally(() => setLoading(false))
+  }, [file, open])
+
+  if (!file) return null
 
   return (
-    <div className="space-y-4">
-      <DatasetDetailSheet
-        dataset={selectedDs}
-        open={selectedDs !== null}
-        onClose={() => setSelectedDs(null)}
-      />
-      <Card>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
+    <Sheet open={open} onOpenChange={v => { if (!v) onClose() }}>
+      <SheetContent side="right" className="w-[600px] max-w-full overflow-y-auto px-6 sm:max-w-[600px]">
+        <SheetHeader className="mb-5">
+          <SheetTitle className="text-base">{file.name}</SheetTitle>
+          <p className="text-xs text-muted-foreground">
+            {file.label} · {file.folder} · {new Date(file.uploadedAt).toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' })}
+          </p>
+        </SheetHeader>
+
+        {loading ? (
+          <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">불러오는 중...</div>
+        ) : error ? (
+          <p className="text-sm text-red-500">{error}</p>
+        ) : rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">데이터가 없습니다.</p>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">{rows.length}건 (최대 50건)</p>
+            {rows.map((row, i) => (
+              <div key={i} className="rounded-lg border p-3 text-xs space-y-2">
+                <div className="flex items-start gap-2">
+                  <span className="shrink-0 font-bold text-blue-500 w-4">Q</span>
+                  <p className="font-medium leading-relaxed">{row.question ?? '-'}</p>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="shrink-0 font-bold text-emerald-600 w-4">A</span>
+                  <p className="text-muted-foreground leading-relaxed">{row.answer ?? '-'}</p>
+                </div>
+                {row.source && (
+                  <div className="flex items-center gap-2">
+                    <span className="shrink-0 font-bold text-violet-500 w-4">S</span>
+                    <span className="font-mono text-muted-foreground">{row.source}</span>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* 사용 이력 (mock 고정) */}
+        <div className="mt-6">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">사용 이력</p>
+          <div className="overflow-hidden rounded-lg border">
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b bg-muted/30">
-                  {['이름 / 버전', '질문 수', '카테고리 구성', '생성일', '마지막 사용일', '상태', ''].map(h => (
-                    <th key={h} className="px-4 py-3 text-left font-semibold text-muted-foreground">{h}</th>
+                  {['RC 버전', '평가일시', 'RAGAS', '통과율', 'Gate'].map(h => (
+                    <th key={h} className="px-3 py-2 text-left font-semibold text-muted-foreground">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {mockDatasets.map(ds => (
-                  <tr
-                    key={ds.id}
-                    className="border-b cursor-pointer transition-colors hover:bg-muted/30"
-                    onClick={() => setSelectedDs(ds)}
-                  >
-                    <td className="px-4 py-3">
-                      <p className="font-medium">{ds.name}</p>
-                      <p className="text-muted-foreground font-mono">{ds.version}</p>
-                    </td>
-                    <td className="px-4 py-3 font-bold" style={{ color: C.blue }}>
-                      {ds.questionCount.toLocaleString()}개
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-1">
-                        {ds.categories.map(cat => (
-                          <span key={cat.name} className="rounded bg-muted px-1.5 py-0.5 text-[10px]">
-                            {cat.name} <span className="font-semibold">{cat.count}</span>
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">{ds.createdAt}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{ds.lastUsedAt}</td>
-                    <td className="px-4 py-3">
-                      <ActiveBadge status={ds.status} />
-                    </td>
-                    <td className="px-4 py-3">
-                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                    </td>
+                {mockUsageHistory['ds-001'].map(h => (
+                  <tr key={h.rcId} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
+                    <td className="px-3 py-2 font-mono font-medium">{h.rcVersion}</td>
+                    <td className="px-3 py-2 text-muted-foreground">{h.evaluatedAt}</td>
+                    <td className="px-3 py-2 font-mono font-semibold" style={{ color: h.ragasScore >= 0.80 ? C.green : C.red }}>{h.ragasScore.toFixed(3)}</td>
+                    <td className="px-3 py-2 font-mono font-semibold" style={{ color: h.passRate >= 85 ? C.green : C.red }}>{h.passRate}%</td>
+                    <td className="px-3 py-2"><GateBadge gate={h.gate} /></td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+  )
+}
+
+function DatasetTab() {
+  const [selectedFile, setSelectedFile] = useState<EvalFile | null>(null)
+  const [evalFiles, setEvalFiles] = useState<EvalFile[]>([])
+  const [listLoading, setListLoading] = useState(true)
+  const [labelFilter, setLabelFilter] = useState<string>('all')
+  const [uploadOpen, setUploadOpen] = useState(false)
+  const [folderOpen, setFolderOpen] = useState(false)
+  const [uploadLabel, setUploadLabel] = useState<DsLabel>('FAQ')
+  const [uploadFile, setUploadFile] = useState<File | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [newFolderName, setNewFolderName] = useState('')
+
+  const fetchFiles = async () => {
+    setListLoading(true)
+    try {
+      const res = await fetch('/api/eval-dataset/list')
+      if (res.ok) {
+        const data = await res.json()
+        setEvalFiles(data.files ?? [])
+      }
+    } finally {
+      setListLoading(false)
+    }
+  }
+
+  useEffect(() => { fetchFiles() }, [])
+
+  const handleUpload = async () => {
+    if (!uploadFile) return
+    setUploading(true)
+    setUploadError(null)
+    try {
+      const formData = new FormData()
+      formData.append('file', uploadFile)
+      formData.append('label', uploadLabel)
+      formData.append('folder', uploadLabel)
+      const res = await fetch('/api/eval-dataset/upload', { method: 'POST', body: formData })
+      if (!res.ok) throw new Error('업로드 실패')
+      setUploadOpen(false)
+      setUploadFile(null)
+      fetchFiles()
+    } catch {
+      setUploadError('업로드에 실패했습니다.')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  function fmtSize(bytes: number) {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  }
+
+  function fmtDate(iso: string) {
+    if (!iso) return '-'
+    return new Date(iso).toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' })
+  }
+
+  const labelCount = DS_LABELS.reduce((acc, l) => {
+    acc[l] = evalFiles.filter(f => f.label === l).length
+    return acc
+  }, {} as Record<DsLabel, number>)
+
+  const filtered = evalFiles.filter(f => labelFilter === 'all' || f.label === labelFilter)
+
+  return (
+    <div className="space-y-4">
+      <EvalFilePreviewSheet file={selectedFile} open={selectedFile !== null} onClose={() => setSelectedFile(null)} />
+
+      {/* 헤더 */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => setLabelFilter('all')}
+            className={cn('rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+              labelFilter === 'all'
+                ? 'bg-foreground text-background border-foreground'
+                : 'text-muted-foreground border-border hover:border-foreground hover:text-foreground'
+            )}
+          >
+            전체 {evalFiles.length}
+          </button>
+          {DS_LABELS.map(l => (
+            <button
+              key={l}
+              onClick={() => setLabelFilter(labelFilter === l ? 'all' : l)}
+              className={cn('rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                labelFilter === l ? LABEL_ACTIVE[l] : `${LABEL_STYLE[l]} hover:opacity-80`
+              )}
+            >
+              {l} {labelCount[l] ?? 0}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setFolderOpen(true)}>
+            <FolderPlus className="size-4 mr-1.5" />
+            폴더 생성
+          </Button>
+          <Button size="sm" onClick={() => setUploadOpen(true)}>
+            <Upload className="size-4 mr-1.5" />
+            업로드
+          </Button>
+        </div>
+      </div>
+
+      {/* 테이블 */}
+      <Card>
+        <CardContent className="p-0">
+          {listLoading ? (
+            <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">불러오는 중...</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b bg-muted/30">
+                    {['파일명', '라벨', '폴더', '크기', '업로드 일시'].map(h => (
+                      <th key={h} className="px-4 py-3 text-left font-semibold text-muted-foreground">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">
+                        {evalFiles.length === 0 ? '업로드된 데이터셋이 없습니다.' : '해당 라벨의 파일이 없습니다.'}
+                      </td>
+                    </tr>
+                  ) : (
+                    filtered.map(f => (
+                      <tr key={f.id} className="border-b transition-colors hover:bg-muted/30 cursor-pointer" onClick={() => setSelectedFile(f)}>
+                        <td className="px-4 py-3 font-medium">{f.name}</td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-semibold ${LABEL_STYLE[f.label as DsLabel] ?? 'bg-gray-50 text-gray-700 border-gray-200'}`}>
+                            {f.label}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">{f.folder}</td>
+                        <td className="px-4 py-3 font-mono text-muted-foreground">{fmtSize(f.size)}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{fmtDate(f.uploadedAt)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
         </CardContent>
       </Card>
+
+      {/* 업로드 다이얼로그 */}
+      <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base">테스트 데이터셋 업로드</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs">라벨</Label>
+              <Select value={uploadLabel} onValueChange={v => setUploadLabel(v as DsLabel)}>
+                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {DS_LABELS.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">엑셀 파일 (.xlsx)</Label>
+              <div
+                className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:bg-muted/30 transition-colors"
+                onClick={() => document.getElementById('eval-upload')?.click()}
+              >
+                <Upload className="size-6 mx-auto text-muted-foreground mb-2" />
+                {uploadFile ? (
+                  <p className="text-xs font-medium">{uploadFile.name}</p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">클릭하여 파일 선택</p>
+                )}
+                <p className="text-[10px] text-muted-foreground mt-1">question / answer / source 컬럼 포함</p>
+              </div>
+              <input
+                id="eval-upload"
+                type="file"
+                accept=".xlsx,.xls"
+                className="hidden"
+                onChange={e => setUploadFile(e.target.files?.[0] ?? null)}
+              />
+            </div>
+          </div>
+          {uploadError && <p className="text-xs text-red-500">{uploadError}</p>}
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setUploadOpen(false)}>취소</Button>
+            <Button size="sm" disabled={!uploadFile || uploading} onClick={handleUpload}>
+              {uploading ? '업로드 중...' : '업로드'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 폴더 생성 다이얼로그 */}
+      <Dialog open={folderOpen} onOpenChange={setFolderOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-base">폴더 생성</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-1.5 py-2">
+            <Label className="text-xs">폴더명</Label>
+            <Input
+              className="h-8 text-xs"
+              placeholder="예: FAQ, Contract"
+              value={newFolderName}
+              onChange={e => setNewFolderName(e.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setFolderOpen(false)}>취소</Button>
+            <Button size="sm" disabled={!newFolderName} onClick={() => setFolderOpen(false)}>생성</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -842,17 +1067,61 @@ export default function QualityGatePage() {
   const [approvalStates, setApprovalStates] = useState<Record<string, ApprovalState>>({})
 
   useEffect(() => {
-    fetch('/api/kfp/runs')
-      .then(r => r.json())
-      .then(data => {
-        setKfpRuns(data.runs ?? [])
+    async function load() {
+      try {
+        const [runsRes, listRes] = await Promise.all([
+          fetch('/api/kfp/runs'),
+          fetch('/api/eval-dataset/list'),
+        ])
+        const runsData = await runsRes.json()
+        const listData = await listRes.json()
+
+        const runs: KFPRun[] = runsData.runs ?? []
+        setKfpRuns(runs)
+
         const initial: Record<string, ApprovalState> = {}
-        for (const run of data.runs ?? []) {
+        for (const run of runs) {
           initial[run.runId] = { status: 'Pending' }
         }
         setApprovalStates(initial)
-      })
-      .finally(() => setLoading(false))
+
+        // SUCCEEDED + metrics 있는 run → 데이터셋 사용 이력 자동 기록
+        const fileMap = new Map<string, string>(
+          (listData.files ?? []).map((f: { name: string; key: string }) => [f.name, f.key])
+        )
+        function gateFromMetrics(m: Record<string, number>): 'Pass' | 'Fail' {
+          return (
+            m.ragas_score       >= 0.80 &&
+            m.faithfulness      >= 0.85 &&
+            m.answer_relevancy  >= 0.75 &&
+            m.context_precision >= 0.65 &&
+            m.context_recall    >= 0.65 &&
+            m.pass_rate         >= 82.0 &&
+            m.latency_ms        <= 2200
+          ) ? 'Pass' : 'Fail'
+        }
+        for (const run of runs) {
+          if (run.status !== 'SUCCEEDED' || !run.metrics) continue
+          const datasetKey = fileMap.get(run.datasetName)
+          if (!datasetKey) continue
+          fetch(`/api/eval-dataset/history?key=${encodeURIComponent(datasetKey)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              rcId:        run.runId,
+              rcVersion:   run.rcVersion,
+              evaluatedAt: run.finishedAt,
+              ragasScore:  run.metrics.ragas_score  ?? 0,
+              passRate:    run.metrics.pass_rate     ?? 0,
+              gate:        gateFromMetrics(run.metrics),
+            }),
+          }).catch(() => {})
+        }
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
   }, [])
 
   function handleApprove(runId: string) {
@@ -881,17 +1150,13 @@ export default function QualityGatePage() {
         </div>
       </div>
 
-      <Tabs defaultValue="dataset">
+      <Tabs defaultValue="rc-list">
         <TabsList>
-          <TabsTrigger value="dataset">테스트 데이터셋</TabsTrigger>
           <TabsTrigger value="criteria">합격 기준 설정</TabsTrigger>
           <TabsTrigger value="rc-list">RC 목록</TabsTrigger>
           <TabsTrigger value="approval">승인 제어판</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="dataset" className="mt-5">
-          <DatasetTab />
-        </TabsContent>
         <TabsContent value="criteria" className="mt-5">
           <CriteriaTab />
         </TabsContent>
