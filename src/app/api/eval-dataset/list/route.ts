@@ -35,6 +35,7 @@ export async function GET() {
       const evalType = evalTypeMatch ? evalTypeMatch[1] : 'Generation'
       const originalName = rawFileName.replace(/^\d+_(End-to-End|Retrieval|Generation)_/, '').replace(/^\d+_/, '')
 
+
       return {
         id: key,
         key,

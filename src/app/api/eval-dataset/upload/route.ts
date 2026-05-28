@@ -35,9 +35,9 @@ export async function POST(req: NextRequest) {
       const rows = XLSX.utils.sheet_to_json<Record<string, string>>(ws)
       rowCount = rows.length
       columns = rows.length > 0 ? Object.keys(rows[0]).join(',') : ''
-      const hasContext = columns.includes('ground_truth_context')
-      const hasAnswer = columns.includes('answer')
-      evalType = hasContext && hasAnswer ? 'End-to-End' : hasContext ? 'Retrieval' : 'Generation'
+      const hasContext = columns.includes('contexts')
+      const hasGroundTruth = columns.includes('ground_truth')
+      evalType = hasContext && hasGroundTruth ? 'End-to-End' : hasContext ? 'Retrieval' : 'Generation'
     } catch {
       // 파싱 실패 시 기본값 유지
     }

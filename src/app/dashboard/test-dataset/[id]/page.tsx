@@ -146,7 +146,7 @@ export default function TestDatasetDetailPage({ params }: { params: Promise<{ id
   }, [fetchRows, page, pageSize])
 
   const totalPages = Math.ceil(total / pageSize)
-  const hasContext = rows.length > 0 && 'ground_truth_context' in rows[0]
+  const hasContext = rows.length > 0 && ('contexts' in rows[0] || 'ground_truth' in rows[0])
   const columns = rows.length > 0 ? Object.keys(rows[0]) : []
 
   return (
@@ -291,12 +291,20 @@ export default function TestDatasetDetailPage({ params }: { params: Promise<{ id
                         <p className="text-sm text-muted-foreground leading-relaxed">{row.answer}</p>
                       </div>
                     )}
-                    {hasContext && row.ground_truth_context && (
+                    {row.contexts && (
                       <div className="flex items-start gap-3">
                         <Tooltip><TooltipTrigger asChild>
                           <span className="text-[10px] font-bold text-violet-500 shrink-0 mt-0.5 w-4 cursor-default">C</span>
-                        </TooltipTrigger><TooltipContent side="left">Ground Truth Context</TooltipContent></Tooltip>
-                        <p className="text-sm text-muted-foreground leading-relaxed line-clamp-3">{row.ground_truth_context}</p>
+                        </TooltipTrigger><TooltipContent side="left">Contexts</TooltipContent></Tooltip>
+                        <p className="text-sm text-muted-foreground leading-relaxed line-clamp-3">{row.contexts}</p>
+                      </div>
+                    )}
+                    {row.ground_truth && (
+                      <div className="flex items-start gap-3">
+                        <Tooltip><TooltipTrigger asChild>
+                          <span className="text-[10px] font-bold text-emerald-500 shrink-0 mt-0.5 w-4 cursor-default">G</span>
+                        </TooltipTrigger><TooltipContent side="left">Ground Truth</TooltipContent></Tooltip>
+                        <p className="text-sm text-muted-foreground leading-relaxed line-clamp-3">{row.ground_truth}</p>
                       </div>
                     )}
                     {row.source && (
@@ -335,7 +343,7 @@ export default function TestDatasetDetailPage({ params }: { params: Promise<{ id
                               className={cn(
                                 'px-3 py-2.5 max-w-[280px]',
                                 col === 'question' && 'font-medium',
-                                (col === 'answer' || col === 'ground_truth_context') && 'text-muted-foreground',
+                                (col === 'answer' || col === 'contexts' || col === 'ground_truth') && 'text-muted-foreground',
                                 col === 'source' && 'font-mono text-muted-foreground',
                               )}
                             >
