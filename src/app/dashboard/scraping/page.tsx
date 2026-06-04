@@ -635,14 +635,6 @@ export default function ScrapingPage() {
                         </TableCell>
                         <TableCell onClick={e => e.stopPropagation()}>
                           <div className="flex items-center gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 px-2 text-xs"
-                              onClick={() => openLivePanel(name)}
-                            >
-                              로그보기
-                            </Button>
                             {wf.status?.phase === 'Running' && (
                               <Button
                                 variant="ghost"
