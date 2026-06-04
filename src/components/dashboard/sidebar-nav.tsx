@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils'
 const navItems = [
   { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
   { href: '/dashboard/serving', label: 'Service Operation', icon: Server },
+  { href: '/dashboard/deployments', label: 'Deployment Timelines', icon: GitBranch },
   { href: '/dashboard/test-dataset', label: 'Eval Dataset', icon: Database },
   { href: '/dashboard/evaluation', label: '퀄리티 게이트', icon: ShieldCheck },
   { href: '/dashboard/infrastructure', label: 'Infrastructure', icon: Network },

@@ -102,6 +102,18 @@ interface MergedService {
   targetRevision?: string
 }
 
+interface RolloutTask {
+  id: string
+  modelName: string
+  namespace: string
+  status: 'deploying' | 'failed'
+  currentStep: number
+  steps: {
+    title: string
+    status: 'completed' | 'current' | 'pending'
+  }[]
+}
+
 export default function ServingPage() {
   const [services, setServices] = useState<MergedService[]>([])
   const [loading, setLoading] = useState(true)
@@ -115,6 +127,24 @@ export default function ServingPage() {
     key: 'createdAt',
     direction: 'desc', // 최신순 기본
   })
+
+  // Active Rollouts Mock Data (K8s에 아직 안 나타난 서비스 포함)
+  const activeRollouts: RolloutTask[] = [
+    {
+      id: 'rollout-1',
+      modelName: 'user-behavior-analysis',
+      namespace: 'serving',
+      status: 'deploying',
+      currentStep: 2,
+      steps: [
+        { title: 'Git Push', status: 'completed' },
+        { title: 'ArgoCD Reg', status: 'current' },
+        { title: 'Syncing', status: 'pending' },
+        { title: 'K8s Ready', status: 'pending' },
+        { title: 'Alert Sent', status: 'pending' },
+      ]
+    }
+  ]
 
   const fetchResources = async () => {
     setLoading(true)
