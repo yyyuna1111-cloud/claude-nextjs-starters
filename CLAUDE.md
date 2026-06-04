@@ -25,7 +25,8 @@
 
 ```bash
 # 개발
-npm run dev         # 개발 서버 실행 (Turbopack)
+
+        # 개발 서버 실행 (Turbopack)
 npm run build       # 프로덕션 빌드
 npm run check-all   # 모든 검사 통합 실행 (권장)
 
