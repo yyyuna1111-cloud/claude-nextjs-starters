@@ -1,0 +1,88 @@
+# JupyterHub Helm chart 3.x — 스토리지 전용 신규 hub
+# Hub NS: datascience-hub
+# User pod NS: datascience-storage (기존 재활용)
+# PVC: personal-seungyeon2 재활용
+# Auth: DummyAuthenticator
+
+hub:
+  services:
+    mlops-dashboard:
+      apiToken: {토큰토큰토큰}
+      admin: true
+  nodeSelector:
+    wide.node.zone: nas-node
+  networkPolicy:
+    enabled: false
+  config:
+    JupyterHub:
+      authenticator_class: dummy
+  extraConfig:
+    spawnerNamespace: |
+      c.KubeSpawner.namespace = "datascience-storage"
+      c.KubeSpawner.pod_name_template = 'jupyter-{username}-{servername}'
+    spawnerTimeout: |
+      c.KubeSpawner.http_timeout = 120
+      c.KubeSpawner.start_timeout = 180
+    hubConnectUrl: |
+      c.JupyterHub.hub_connect_url = "http://hub.datascience-hub.svc.cluster.local:8081"
+    namedServers: |
+      c.JupyterHub.allow_named_servers = True
+    spawnHook: |
+      DEFAULT_IMAGE = "10.70.170.227:80/jupyter/base-notebook:x86_64-python-3.11.6"
+      async def pre_spawn_hook(spawner):
+          username = spawner.user.name
+          servername = spawner.name or "default"
+          image = spawner.user_options.get("image", DEFAULT_IMAGE)
+          spawner.image = image
+          spawner.volumes = [{
+              "name": "personal-storage",
+              "persistentVolumeClaim": {"claimName": f"personal-{username}"},
+          }]
+          spawner.volume_mounts = [{
+              "name": "personal-storage",
+              "mountPath": "/home/jovyan/work",
+              "subPath": f"{username}/{servername}",
+          }]
+      c.KubeSpawner.pre_spawn_hook = pre_spawn_hook
+
+singleuser:
+  nodeSelector:
+    wide.node.zone: nas-node
+  image:
+    name: 10.70.170.227:80/jupyter/base-notebook
+    tag: x86_64-python-3.11.6
+    pullPolicy: IfNotPresent
+  storage:
+    type: none
+  defaultUrl: "/lab"
+  lifecycleHooks:
+    postStart:
+      exec:
+        command:
+          - /bin/sh
+          - -c
+          - |
+            pip install -q --upgrade jupyterhub==4.1.6
+            mkdir -p /opt/conda/share/jupyter/lab/settings
+            echo '{"@jupyterlab/terminal-extension:plugin": {"theme": "dark"}}' > /opt/conda/share/jupyter/lab/settings/overrides.json
+
+proxy:
+  chp:
+    nodeSelector:
+      wide.node.zone: nas-node
+    networkPolicy:
+      enabled: false
+  service:
+    type: NodePort
+    nodePorts:
+      http: 30900  # 기존 kubespawner hub는 30899
+
+scheduling:
+  userScheduler:
+    enabled: false
+
+prePuller:
+  hook:
+    enabled: false
+  continuous:
+    enabled: false

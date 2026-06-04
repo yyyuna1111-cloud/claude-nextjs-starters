@@ -1,0 +1,39 @@
+# hub(datascience-hub NS)가 datascience-storage NS에서 pod를 띄울 수 있도록 RBAC 부여
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: hub-spawner
+  namespace: datascience-storage
+rules:
+  - apiGroups: [""]
+    resources:
+      - pods
+      - services
+      - secrets
+      - configmaps
+      - endpoints
+      - events
+      - persistentvolumeclaims
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources:
+      - pods/log
+      - pods/exec
+    verbs: ["get", "list", "watch", "create"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: hub-spawner
+  namespace: datascience-storage
+subjects:
+  - kind: ServiceAccount
+    name: hub
+    namespace: datascience-hub
+roleRef:
+  kind: Role
+  name: hub-spawner
+  apiGroup: rbac.authorization.k8s.io

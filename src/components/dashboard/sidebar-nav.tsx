@@ -1,10 +1,11 @@
 'use client'
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import * as React from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
-import { LayoutDashboard, GitBranch, Server, ShieldCheck, ChevronDown, Network, Sun, Moon, FlaskConical, Database } from 'lucide-react'
+import { LayoutDashboard, GitBranch, Server, ShieldCheck, ChevronDown, Network, Sun, Moon, FlaskConical, Database, HardDrive, Package, BookOpen } from 'lucide-react'
 import { useTheme } from 'next-themes'
 
 import { cn } from '@/lib/utils'
@@ -16,6 +17,9 @@ const navItems = [
   { href: '/dashboard/evaluation', label: '퀄리티 게이트', icon: ShieldCheck },
   { href: '/dashboard/scraping', label: 'Data Scraping', icon: Database },
   { href: '/dashboard/infrastructure', label: 'Infrastructure', icon: Network },
+  { href: '/dashboard/storage', label: 'Storage', icon: HardDrive },
+  { href: '/dashboard/jupyter', label: 'Jupyter', icon: BookOpen },
+  { href: '/dashboard/registry', label: 'Registry', icon: Package },
 ]
 
 export function SidebarNav() {

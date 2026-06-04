@@ -1,4 +1,5 @@
 'use client'
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useEffect, useState, useMemo } from 'react'
 import Link from 'next/link'
@@ -60,6 +61,7 @@ interface ISVC {
   status: 'Ready' | 'NotReady'
   node: string
   createdAt: string
+  url?: string
   labels?: Record<string, string>
 }
 
@@ -180,8 +182,8 @@ export default function ServingPage() {
           name: isvc.name,
           namespace: isvc.namespace,
           argoAppName: managingApp ? managingApp.metadata.name : null,
-          syncStatus: managingApp ? managingApp.status.sync.status : (isvc.namespace === 'serving' ? 'Unknown' : 'Manual'),
-          healthStatus: managingApp ? managingApp.status.health.status : 'N/A',
+          syncStatus: (managingApp ? managingApp.status.sync.status : (isvc.namespace === 'serving' ? 'Unknown' : 'Manual')) as 'Synced' | 'OutOfSync' | 'Unknown' | 'Manual',
+          healthStatus: (managingApp ? managingApp.status.health.status : 'N/A') as 'Healthy' | 'Progressing' | 'Degraded' | 'Missing' | 'Unknown' | 'N/A',
           isvcStatus: isvc.status,
           url: isvc.url || '',
           node: isvc.node,

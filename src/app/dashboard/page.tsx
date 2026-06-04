@@ -1,4 +1,5 @@
 'use client'
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 // MLOps 대시보드 Overview 페이지
 // Recharts를 사용하므로 클라이언트 컴포넌트로 선언

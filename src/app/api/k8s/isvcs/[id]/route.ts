@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server'
 import { env } from '@/lib/env'
 
@@ -6,10 +7,10 @@ const K8S_TOKEN = env.K8S_TOKEN
 
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const { searchParams } = new URL(request.url)
-  const id = (await (params as any)).id
+  const { id } = await params
   const namespace = searchParams.get('ns') || 'default'
 
   try {

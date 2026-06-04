@@ -21,6 +21,10 @@ const envSchema = z.object({
 
   // 보안 설정
   K8S_SKIP_TLS_VERIFY: z.string().default('true'),
+
+  // JupyterHub
+  JUPYTERHUB_URL: z.string().default('http://localhost:30900'),
+  JUPYTERHUB_TOKEN: z.string().default(''),
 })
 
 const parsedEnv = envSchema.parse({
@@ -35,6 +39,8 @@ const parsedEnv = envSchema.parse({
   K8S_OPS_TOKEN: process.env.K8S_OPS_TOKEN,
   K8S_OPS_DISPLAY_IP: process.env.K8S_OPS_DISPLAY_IP,
   K8S_SKIP_TLS_VERIFY: process.env.K8S_SKIP_TLS_VERIFY,
+  JUPYTERHUB_URL: process.env.JUPYTERHUB_URL,
+  JUPYTERHUB_TOKEN: process.env.JUPYTERHUB_TOKEN,
 })
 
 // 환경에 따른 현재 설정값 도출 (Helper)
