@@ -1,9 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { EyeIcon, EyeOffIcon } from 'lucide-react'
-
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -12,54 +11,41 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
 export function LoginForm() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const next = searchParams.get('next') ?? '/dashboard/storage'
+
   const [showPassword, setShowPassword] = useState(false)
-  const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-    rememberMe: false,
-  })
-  const [errors, setErrors] = useState({
-    email: '',
-    password: '',
-  })
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
 
-  const validateForm = () => {
-    const newErrors = { email: '', password: '' }
-
-    if (!formData.email) {
-      newErrors.email = '이메일을 입력해 주세요.'
-    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      newErrors.email = '올바른 이메일 주소를 입력해 주세요.'
-    }
-
-    if (!formData.password) {
-      newErrors.password = '비밀번호를 입력해 주세요.'
-    } else if (formData.password.length < 8) {
-      newErrors.password = '비밀번호는 최소 8자 이상이어야 합니다.'
-    }
-
-    setErrors(newErrors)
-    return !newErrors.email && !newErrors.password
-  }
-
-  const handleSubmit = (e: React.FormEvent) => {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (validateForm()) {
-      console.log('로그인 데이터:', formData)
-      // 여기에 로그인 로직을 추가하세요
-    }
-  }
-
-  const handleInputChange = (field: string, value: string | boolean) => {
-    setFormData(prev => ({ ...prev, [field]: value }))
-    // 입력 시 에러 초기화
-    if (field === 'email' || field === 'password') {
-      setErrors(prev => ({ ...prev, [field]: '' }))
+    setError('')
+    setLoading(true)
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error ?? '로그인에 실패했습니다')
+        return
+      }
+      router.push(next)
+      router.refresh()
+    } catch {
+      setError('서버에 연결할 수 없습니다')
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -68,24 +54,22 @@ export function LoginForm() {
       <CardHeader className="space-y-1">
         <CardTitle className="text-center text-2xl font-bold">로그인</CardTitle>
         <CardDescription className="text-center">
-          계정에 로그인하여 서비스를 이용하세요
+          MLOps 대시보드에 로그인하세요
         </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="email">이메일</Label>
+            <Label htmlFor="username">아이디</Label>
             <Input
-              id="email"
-              type="email"
-              placeholder="your@email.com"
-              value={formData.email}
-              onChange={e => handleInputChange('email', e.target.value)}
-              className={errors.email ? 'border-red-500' : ''}
+              id="username"
+              type="text"
+              placeholder="username"
+              value={username}
+              onChange={e => setUsername(e.target.value)}
+              autoComplete="username"
+              disabled={loading}
             />
-            {errors.email && (
-              <p className="text-sm text-red-500">{errors.email}</p>
-            )}
           </div>
 
           <div className="space-y-2">
@@ -95,9 +79,11 @@ export function LoginForm() {
                 id="password"
                 type={showPassword ? 'text' : 'password'}
                 placeholder="비밀번호를 입력하세요"
-                value={formData.password}
-                onChange={e => handleInputChange('password', e.target.value)}
-                className={errors.password ? 'border-red-500 pr-10' : 'pr-10'}
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                className="pr-10"
+                autoComplete="current-password"
+                disabled={loading}
               />
               <Button
                 type="button"
@@ -105,6 +91,7 @@ export function LoginForm() {
                 size="icon"
                 className="absolute top-0 right-0 h-full px-3 py-2 hover:bg-transparent"
                 onClick={() => setShowPassword(!showPassword)}
+                tabIndex={-1}
               >
                 {showPassword ? (
                   <EyeOffIcon className="h-4 w-4" />
@@ -113,43 +100,16 @@ export function LoginForm() {
                 )}
               </Button>
             </div>
-            {errors.password && (
-              <p className="text-sm text-red-500">{errors.password}</p>
-            )}
           </div>
 
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="rememberMe"
-              checked={formData.rememberMe}
-              onCheckedChange={checked =>
-                handleInputChange('rememberMe', checked === true)
-              }
-            />
-            <Label
-              htmlFor="rememberMe"
-              className="cursor-pointer text-sm font-normal"
-            >
-              로그인 상태 유지
-            </Label>
-          </div>
+          {error && (
+            <p className="text-sm text-destructive">{error}</p>
+          )}
 
-          <Button type="submit" className="w-full">
-            로그인하기
+          <Button type="submit" className="w-full" disabled={loading || !username || !password}>
+            {loading ? '로그인 중...' : '로그인'}
           </Button>
         </form>
-
-        <div className="mt-6 text-center">
-          <p className="text-muted-foreground text-sm">
-            아직 계정이 없으신가요?{' '}
-            <Link
-              href="/signup"
-              className="text-primary underline-offset-4 hover:underline"
-            >
-              회원가입
-            </Link>
-          </p>
-        </div>
       </CardContent>
     </Card>
   )

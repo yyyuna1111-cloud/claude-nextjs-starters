@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client'
 
 import {
@@ -104,8 +105,8 @@ function ResourceNode({ data }: NodeProps) {
 const nodeTypes = { resource: ResourceNode }
 
 export function ResourceTree({ nodes: argoNodes }: ResourceTreeProps) {
-  const [nodes, setNodes, onNodesChange] = useNodesState([])
-  const [edges, setEdges, onEdgesChange] = useEdgesState([])
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
 
   useEffect(() => {
     // Simple layout logic: group by kind and stack horizontally

@@ -1,4 +1,5 @@
 'use client'
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { use, useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
@@ -61,7 +62,7 @@ function fmtDate(iso: string) {
   return new Date(iso).toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' })
 }
 
-const PAGE_SIZE = { card: 10, table: 10 }
+const PAGE_SIZE: Record<string, number> = { card: 10, table: 10 }
 
 function GateBadge({ gate }: { gate: 'Pass' | 'Fail' }) {
   return gate === 'Pass' ? (

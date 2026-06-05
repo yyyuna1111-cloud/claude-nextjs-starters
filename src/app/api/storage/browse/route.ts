@@ -1,0 +1,55 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { NextRequest, NextResponse } from 'next/server'
+
+const FILER_URL = process.env.SEAWEEDFS_FILER_URL ?? 'http://10.70.171.177:31994'
+
+function isDir(mode: number): boolean {
+  return (mode >>> 31) === 1
+}
+
+export async function GET(req: NextRequest) {
+  const bucket = req.nextUrl.searchParams.get('bucket')
+  const prefix = req.nextUrl.searchParams.get('prefix') ?? ''
+
+  if (!bucket) return NextResponse.json({ error: 'bucket 파라미터가 필요합니다' }, { status: 400 })
+
+  // Filer 경로: /buckets/{bucket}/{prefix}
+  const dirPath = `/buckets/${bucket}/${prefix}`
+  const url = `${FILER_URL}${dirPath}?limit=500`
+
+  try {
+    const res = await fetch(url, {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(10000),
+      next: { revalidate: 0 },
+    })
+
+    if (!res.ok) {
+      return NextResponse.json({ folders: [], files: [], prefix, bucket, error: `Filer ${res.status}` })
+    }
+
+    const data = await res.json()
+    const entries: any[] = data.Entries ?? []
+
+    const folders = entries
+      .filter(e => isDir(e.Mode))
+      .map(e => {
+        const name = e.FullPath.split('/').filter(Boolean).pop() ?? ''
+        return { name, prefix: prefix ? `${prefix}${name}/` : `${name}/` }
+      })
+
+    const files = entries
+      .filter(e => !isDir(e.Mode))
+      .map(e => ({
+        key: prefix ? `${prefix}${e.FullPath.split('/').pop()}` : (e.FullPath.split('/').pop() ?? ''),
+        name: e.FullPath.split('/').pop() ?? '',
+        size: e.FileSize ?? 0,
+        lastModified: e.Mtime ?? '',
+      }))
+
+    return NextResponse.json({ folders, files, prefix, bucket, isTruncated: data.ShouldDisplayLoadMore })
+  } catch (err: any) {
+    console.error('[Storage Browse]', err.message)
+    return NextResponse.json({ folders: [], files: [], error: err.message })
+  }
+}

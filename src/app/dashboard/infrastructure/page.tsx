@@ -1,4 +1,5 @@
 'use client'
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 // Infrastructure 페이지 - K8s 인프라 전체 현황 대시보드
 // Pod / Node / GPU 상태를 탭별로 표시
