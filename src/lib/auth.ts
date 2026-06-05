@@ -2,6 +2,12 @@
 // USER_PASSWORDS 형식: "alice:pass1,bob:pass2"
 
 export const COOKIE_NAME = 'mlops_session'
+
+const ADMIN_USERS = ['seungyeon2', 'yun4703', 'ynlee0804']
+
+export function isAdminUser(username: string): boolean {
+  return ADMIN_USERS.includes(username)
+}
 export const SESSION_MAX_AGE = 60 * 60 * 24 * 7 // 7일 (초)
 
 function getSecret(): string {

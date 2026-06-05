@@ -5,17 +5,33 @@ const REGISTRY = process.env.DOCKER_REGISTRY_URL ?? 'http://10.70.170.227'
 
 export async function GET() {
   try {
-    // Registry v2 API — 전체 레포 목록 (n=1000으로 페이지 없이 한번에)
-    const res = await fetch(`${REGISTRY}/v2/_catalog?n=1000`, {
-      headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(10000),
-      next: { revalidate: 0 },
-    })
+    const all: string[] = []
+    let url: string | null = `${REGISTRY}/v2/_catalog?n=500`
 
-    if (!res.ok) throw new Error(`Registry ${res.status}`)
+    while (url) {
+      const res = await fetch(url, {
+        headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(15000),
+        next: { revalidate: 0 },
+      })
+      if (!res.ok) throw new Error(`Registry ${res.status}`)
 
-    const data = await res.json()
-    const repositories: string[] = (data.repositories ?? []).sort()
+      const data = await res.json()
+      all.push(...(data.repositories ?? []))
+
+      // Link 헤더로 다음 페이지 확인
+      const link = res.headers.get('Link')
+      if (link) {
+        const match = link.match(/<([^>]+)>;\s*rel="next"/)
+        url = match ? `${REGISTRY}${match[1]}` : null
+      } else {
+        url = null
+      }
+    }
+
+    const repositories = all
+      .filter(r => !r.startsWith('jupyterhub'))
+      .sort()
 
     return NextResponse.json({ repositories, total: repositories.length })
   } catch (err: any) {

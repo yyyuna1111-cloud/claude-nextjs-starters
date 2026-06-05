@@ -19,7 +19,6 @@ import {
   Share2,
   Database,
   AlertCircle,
-  LogOut,
 } from 'lucide-react'
 import { useCurrentUser } from '@/hooks/use-current-user'
 import { Badge } from '@/components/ui/badge'
@@ -104,7 +103,7 @@ function formatDate(iso: string): string {
 
 // ─── 사용량 모니터링 ─────────────────────────────────────────────────────────
 
-function UsageMonitor({ currentUser }: { currentUser: string }) {
+function UsageMonitor({ currentUser, isAdmin }: { currentUser: string; isAdmin: boolean }) {
   const [pvcs, setPvcs] = useState<PVC[]>([])
   const [bucketStats, setBucketStats] = useState<Record<string, BucketStat>>({})
   const [pvcLoading, setPvcLoading] = useState(true)
@@ -146,7 +145,7 @@ function UsageMonitor({ currentUser }: { currentUser: string }) {
     fetchStats()
   }, [fetchPvcs, fetchStats])
 
-  const visiblePvcs = pvcs.filter(p => p.type === 'shared' || p.user === currentUser)
+  const visiblePvcs = isAdmin ? pvcs : pvcs.filter(p => p.type === 'shared' || p.user === currentUser)
   const totalAllocated = visiblePvcs.reduce((s, p) => s + p.capacityBytes, 0)
   const personalPvcs = visiblePvcs.filter(p => p.type === 'personal')
   const sharedPvcs = visiblePvcs.filter(p => p.type === 'shared')
@@ -351,7 +350,7 @@ function UsageMonitor({ currentUser }: { currentUser: string }) {
 
 // ─── 파일 브라우저 ────────────────────────────────────────────────────────────
 
-function FileBrowser({ currentUser }: { currentUser: string }) {
+function FileBrowser({ currentUser, isAdmin }: { currentUser: string; isAdmin: boolean }) {
   const [pvcs, setPvcs] = useState<PVC[]>([])
   // selectedBucket = 실제 S3 버킷명 (volumeName = pvc-{uuid}, 없으면 PVC 이름)
   const [selectedBucket, setSelectedBucket] = useState<string | null>(null)
@@ -371,7 +370,7 @@ function FileBrowser({ currentUser }: { currentUser: string }) {
       .then(r => r.json())
       .then(data => {
         const all: PVC[] = data.pvcs ?? []
-        const visible = all.filter(p => p.type === 'shared' || p.user === currentUser)
+        const visible = isAdmin ? all : all.filter(p => p.type === 'shared' || p.user === currentUser)
         setPvcs(visible)
         if (visible.length > 0 && !initializedRef.current) {
           initializedRef.current = true
@@ -736,58 +735,41 @@ function FileBrowser({ currentUser }: { currentUser: string }) {
 // ─── 메인 페이지 ─────────────────────────────────────────────────────────────
 
 export default function StoragePage() {
-  const { user, loaded, logout } = useCurrentUser()
+  const { user, isAdmin, loaded } = useCurrentUser()
 
   if (!loaded || !user) return null
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight">Storage</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            SeaweedFS 기반 PVC 스토리지 현황 및 파일 브라우저
-          </p>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <div className="flex items-center gap-2 rounded-full border pl-1 pr-3 py-1">
-            <div className="flex size-6 items-center justify-center rounded-full bg-primary/10 text-primary font-bold text-xs">
-              {user.charAt(0).toUpperCase()}
-            </div>
-            <span className="text-sm font-medium">{user}</span>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 text-xs gap-1.5 text-muted-foreground hover:text-foreground"
-            onClick={logout}
-          >
-            <LogOut className="size-3.5" />
-            로그아웃
-          </Button>
-        </div>
+      <div>
+        <h1 className="text-xl font-bold tracking-tight">Storage</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          SeaweedFS 기반 PVC 스토리지 현황 및 파일 브라우저
+        </p>
       </div>
 
-      <Tabs defaultValue="usage">
-        <TabsList className="w-full sm:w-auto">
-          <TabsTrigger value="usage" className="gap-2">
-            <Database className="size-3.5" />
-            사용량 모니터링
-          </TabsTrigger>
-          <TabsTrigger value="browser" className="gap-2">
-            <FolderOpen className="size-3.5" />
-            파일 브라우저
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="usage" className="mt-4">
-          <UsageMonitor currentUser={user} />
-        </TabsContent>
-
-        <TabsContent value="browser" className="mt-4">
-          <FileBrowser currentUser={user} />
-        </TabsContent>
-      </Tabs>
+      {isAdmin ? (
+        <Tabs defaultValue="usage">
+          <TabsList className="w-full sm:w-auto">
+            <TabsTrigger value="usage" className="gap-2">
+              <Database className="size-3.5" />
+              사용량 모니터링
+            </TabsTrigger>
+            <TabsTrigger value="browser" className="gap-2">
+              <FolderOpen className="size-3.5" />
+              파일 브라우저
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="usage" className="mt-4">
+            <UsageMonitor currentUser={user} isAdmin={isAdmin} />
+          </TabsContent>
+          <TabsContent value="browser" className="mt-4">
+            <FileBrowser currentUser={user} isAdmin={isAdmin} />
+          </TabsContent>
+        </Tabs>
+      ) : (
+        <FileBrowser currentUser={user} isAdmin={false} />
+      )}
     </div>
   )
 }

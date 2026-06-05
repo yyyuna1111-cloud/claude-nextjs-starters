@@ -25,6 +25,7 @@ hub:
       c.KubeSpawner.start_timeout = 180
     hubConnectUrl: |
       c.JupyterHub.hub_connect_url = "http://hub.datascience-hub.svc.cluster.local:8081"
+      c.JupyterHub.logout_redirect_url = "http://localhost:3000/dashboard/jupyter/open-pending"
     namedServers: |
       c.JupyterHub.allow_named_servers = True
     spawnHook: |

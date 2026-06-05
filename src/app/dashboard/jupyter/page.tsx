@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { ExternalLink, Plus, Trash2, RefreshCw, BookOpen, Loader2, LogOut } from 'lucide-react'
+import { ExternalLink, Plus, Trash2, RefreshCw, BookOpen, Loader2 } from 'lucide-react'
 import { useCurrentUser } from '@/hooks/use-current-user'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -25,10 +25,10 @@ function StatusBadge({ ready, pending }: { ready: boolean; pending: string | nul
 }
 
 export default function JupyterPage() {
-  const { user, loaded, logout } = useCurrentUser()
+  const { user, loaded } = useCurrentUser()
   const [servers, setServers] = useState<Server[]>([])
-  const [hubLoginUrl, setHubLoginUrl] = useState<string | null>(null)
-  const [sessionReady, setSessionReady] = useState(false)
+  const [openingServer, setOpeningServer] = useState<string | null>(null)
+  const [pendingOpenUrl, setPendingOpenUrl] = useState<string | null>(null)
   const [hasPVC, setHasPVC] = useState<boolean | null>(null)
   const [loading, setLoading] = useState(true)
   const [newName, setNewName] = useState('')
@@ -42,7 +42,6 @@ export default function JupyterPage() {
       const res = await fetch(`/api/jupyter/servers?username=${encodeURIComponent(u)}`)
       const data = await res.json()
       setServers(data.servers ?? [])
-      setHubLoginUrl(prev => prev || data.hubLoginUrl)
     } catch {
       toast.error('서버 목록 조회 실패')
     } finally {
@@ -96,6 +95,24 @@ export default function JupyterPage() {
     }
   }
 
+  async function handleOpen(server: Server) {
+    if (!user) return
+    setOpeningServer(server.name)
+    try {
+      const res = await fetch('/api/jupyter/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: user }),
+      })
+      const data = await res.json()
+      const url = data.token ? `${server.url}?token=${data.token}` : server.url
+      setPendingOpenUrl(url)  // logout iframe onLoad 후 이 URL 열기
+    } catch {
+      window.open(server.url, '_blank')
+      setOpeningServer(null)
+    }
+  }
+
   async function handleDelete(name: string) {
     if (!user) return
     setDeletingName(name)
@@ -132,36 +149,30 @@ export default function JupyterPage() {
 
   return (
     <div className="space-y-6">
-      {hubLoginUrl && (
-        <iframe
-          src={hubLoginUrl}
-          onLoad={() => setSessionReady(true)}
-          width="1" height="1"
-          style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}
-        />
-      )}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold tracking-tight">Jupyter Notebooks</h1>
           <p className="text-sm text-muted-foreground mt-0.5">개인 개발환경 생성 및 관리</p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <div className="flex items-center gap-2 rounded-full border pl-1 pr-3 py-1">
-            <div className="flex size-6 items-center justify-center rounded-full bg-primary/10 text-primary font-bold text-xs">
-              {user.charAt(0).toUpperCase()}
-            </div>
-            <span className="text-sm font-medium">{user}</span>
-          </div>
-          <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => fetchServers(user)}>
-            <RefreshCw className="size-3.5" />
-            새로고침
-          </Button>
-          <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs text-muted-foreground hover:text-foreground" onClick={logout}>
-            <LogOut className="size-3.5" />
-            로그아웃
-          </Button>
-        </div>
+        <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => fetchServers(user)}>
+          <RefreshCw className="size-3.5" />
+          새로고침
+        </Button>
       </div>
+
+      {/* JupyterHub 세션 로그아웃 후 노트북 열기 */}
+      {pendingOpenUrl && (
+        <iframe
+          src={`${process.env.NEXT_PUBLIC_JUPYTERHUB_URL ?? 'http://localhost:30900'}/hub/logout`}
+          onLoad={() => {
+            window.open(pendingOpenUrl, '_blank')
+            setPendingOpenUrl(null)
+            setOpeningServer(null)
+          }}
+          width="1" height="1"
+          style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}
+        />
+      )}
 
       {/* 생성 폼 */}
       <Card>
@@ -226,7 +237,7 @@ export default function JupyterPage() {
                   <TableRow
                     key={server.name}
                     className={server.ready ? 'cursor-pointer hover:bg-muted/50' : ''}
-                    onClick={() => server.ready && window.open(server.url, '_blank')}
+                    onClick={() => server.ready && handleOpen(server)}
                   >
                     <TableCell className="font-mono text-sm">{server.name}</TableCell>
                     <TableCell><StatusBadge ready={server.ready} pending={server.pending} /></TableCell>
@@ -237,11 +248,13 @@ export default function JupyterPage() {
                             variant="ghost"
                             size="icon"
                             className="size-7"
-                            onClick={e => { e.stopPropagation(); window.open(server.url, '_blank') }}
-                            disabled={!sessionReady}
-                            title={sessionReady ? '열기' : '세션 준비 중...'}
+                            onClick={e => { e.stopPropagation(); handleOpen(server) }}
+                            disabled={openingServer === server.name}
+                            title="열기"
                           >
-                            {sessionReady ? <ExternalLink className="size-3.5" /> : <Loader2 className="size-3.5 animate-spin" />}
+                            {openingServer === server.name
+                              ? <Loader2 className="size-3.5 animate-spin" />
+                              : <ExternalLink className="size-3.5" />}
                           </Button>
                         )}
                         <Button
