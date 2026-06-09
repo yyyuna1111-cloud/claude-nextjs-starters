@@ -9,7 +9,7 @@ export async function GET() {
     let url: string | null = `${REGISTRY}/v2/_catalog?n=500`
 
     while (url) {
-      const res = await fetch(url, {
+      const res: Response = await fetch(url, {
         headers: { Accept: 'application/json' },
         signal: AbortSignal.timeout(15000),
         next: { revalidate: 0 },
