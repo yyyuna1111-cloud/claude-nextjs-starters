@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlops-dashboard
+  namespace: mlops-dashboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mlops-dashboard
+  template:
+    metadata:
+      labels:
+        app: mlops-dashboard
+    spec:
+      containers:
+        - name: mlops-dashboard
+          image: 10.70.170.227:80/mlops-dashboard:v0.1.0
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: mlops-dashboard-env
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
