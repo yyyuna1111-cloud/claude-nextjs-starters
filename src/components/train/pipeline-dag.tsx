@@ -136,6 +136,7 @@ export function PipelineDag({ steps }: PipelineDagProps) {
   return (
     <div className="h-[160px] w-full overflow-hidden rounded-lg border">
       <ReactFlow
+        key={steps.map(s => s.id).join(',')}
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
