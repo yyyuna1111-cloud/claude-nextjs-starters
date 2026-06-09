@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const { username, name, image } = await req.json()
+  const { username, name, image, extra_pvcs } = await req.json()
   if (!username || !name) return NextResponse.json({ error: 'username, name 필요' }, { status: 400 })
 
   // 유저 없으면 먼저 생성
@@ -64,8 +64,12 @@ export async function POST(req: NextRequest) {
     })
   }
 
+  const user_options: any = {}
+  if (image) user_options.image = image
+  if (Array.isArray(extra_pvcs) && extra_pvcs.length > 0) user_options.extra_pvcs = extra_pvcs
+
   const body: any = {}
-  if (image) body.user_options = { image }
+  if (Object.keys(user_options).length > 0) body.user_options = user_options
 
   const res = await fetch(`${env.JUPYTERHUB_URL}/hub/api/users/${username}/servers/${name}`, {
     method: 'POST',

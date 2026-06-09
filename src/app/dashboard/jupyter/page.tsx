@@ -6,6 +6,7 @@ import { useCurrentUser } from '@/hooks/use-current-user'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { toast } from 'sonner'
@@ -33,6 +34,7 @@ export default function JupyterPage() {
   const [loading, setLoading] = useState(true)
   const [newName, setNewName] = useState('')
   const [newImage, setNewImage] = useState('')
+  const [mountSllm, setMountSllm] = useState(false)
   const [creating, setCreating] = useState(false)
   const [deletingName, setDeletingName] = useState<string | null>(null)
 
@@ -77,13 +79,19 @@ export default function JupyterPage() {
       const res = await fetch('/api/jupyter/servers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: user, name: newName.trim(), image: newImage.trim() || undefined }),
+        body: JSON.stringify({
+          username: user,
+          name: newName.trim(),
+          image: newImage.trim() || undefined,
+          extra_pvcs: mountSllm ? ['shared-sllm'] : [],
+        }),
       })
       const data = await res.json()
       if (data.success) {
         toast.success(`${newName} 생성 중...`)
         setNewName('')
         setNewImage('')
+        setMountSllm(false)
         fetchServers(user)
       } else {
         toast.error(data.error ?? '생성 실패')
@@ -180,24 +188,36 @@ export default function JupyterPage() {
           <CardTitle className="text-sm font-semibold">새 노트북 서버 생성</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex gap-2">
-            <Input
-              placeholder="서버 이름 (예: pytorch-env)"
-              value={newName}
-              onChange={e => setNewName(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleCreate()}
-              className="h-8 text-sm max-w-xs"
-            />
-            <Input
-              placeholder="이미지 (기본값 사용 시 비워두기)"
-              value={newImage}
-              onChange={e => setNewImage(e.target.value)}
-              className="h-8 text-sm flex-1"
-            />
-            <Button size="sm" className="h-8 gap-1.5 shrink-0" onClick={handleCreate} disabled={!newName.trim() || creating}>
-              {creating ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
-              생성
-            </Button>
+          <div className="space-y-2">
+            <div className="flex gap-2">
+              <Input
+                placeholder="서버 이름 (예: pytorch-env)"
+                value={newName}
+                onChange={e => setNewName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleCreate()}
+                className="h-8 text-sm max-w-xs"
+              />
+              <Input
+                placeholder="이미지 (기본값 사용 시 비워두기)"
+                value={newImage}
+                onChange={e => setNewImage(e.target.value)}
+                className="h-8 text-sm flex-1"
+              />
+              <Button size="sm" className="h-8 gap-1.5 shrink-0" onClick={handleCreate} disabled={!newName.trim() || creating}>
+                {creating ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
+                생성
+              </Button>
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="mount-sllm"
+                checked={mountSllm}
+                onCheckedChange={v => setMountSllm(!!v)}
+              />
+              <label htmlFor="mount-sllm" className="text-xs text-muted-foreground cursor-pointer select-none">
+                shared-sllm 마운트 — <span className="font-mono">/home/jovyan/shared-sllm</span>
+              </label>
+            </div>
           </div>
         </CardContent>
       </Card>

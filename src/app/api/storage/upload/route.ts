@@ -1,7 +1,16 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server'
+import fs from 'fs'
+import path from 'path'
 
 const FILER_URL = process.env.SEAWEEDFS_FILER_URL ?? 'http://10.70.171.177:31994'
+const NFS_SLLM_PATH = '/mnt/sllm'
+
+function safePath(base: string, ...parts: string[]): string {
+  const resolved = path.resolve(base, ...parts)
+  if (!resolved.startsWith(path.resolve(base))) throw new Error('Invalid path')
+  return resolved
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -14,8 +23,15 @@ export async function POST(req: NextRequest) {
     if (!bucket) return NextResponse.json({ error: 'bucket이 필요합니다' }, { status: 400 })
 
     const buffer = Buffer.from(await file.arrayBuffer())
-    const filePath = `/buckets/${bucket}/${prefix}${file.name}`
 
+    if (bucket === 'shared-sllm') {
+      const dirPath = safePath(NFS_SLLM_PATH, prefix)
+      fs.mkdirSync(dirPath, { recursive: true })
+      fs.writeFileSync(path.join(dirPath, file.name), buffer)
+      return NextResponse.json({ success: true, key: `${prefix}${file.name}`, name: file.name, bucket })
+    }
+
+    const filePath = `/buckets/${bucket}/${prefix}${file.name}`
     const res = await fetch(`${FILER_URL}${filePath}`, {
       method: 'PUT',
       headers: { 'Content-Type': file.type || 'application/octet-stream' },
