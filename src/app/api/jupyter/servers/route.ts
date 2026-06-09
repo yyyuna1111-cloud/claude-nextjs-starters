@@ -35,11 +35,12 @@ export async function GET(req: NextRequest) {
     token = tokenData.token ?? ''
   }
 
+  const publicUrl = process.env.NEXT_PUBLIC_JUPYTERHUB_URL ?? env.JUPYTERHUB_URL
   const servers = Object.entries(data.servers ?? {}).map(([name, s]: [string, any]) => ({
     name: name || 'default',
     ready: s.ready ?? false,
     pending: s.pending ?? null,
-    url: `${env.JUPYTERHUB_URL}/user/${username}/${name || ''}/lab`,
+    url: `${publicUrl}/user/${username}/${name || ''}/lab`,
   }))
 
   const hubLoginUrl = token ? `${env.JUPYTERHUB_URL}/hub/home?token=${token}` : null
