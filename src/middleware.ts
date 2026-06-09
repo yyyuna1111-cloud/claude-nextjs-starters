@@ -1,15 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { verifySessionToken, COOKIE_NAME } from '@/lib/auth'
+import { COOKIE_NAME } from '@/lib/auth'
 
-export async function middleware(request: NextRequest) {
+export function middleware(request: NextRequest) {
   const token = request.cookies.get(COOKIE_NAME)?.value
-  const { pathname } = request.nextUrl
 
-  const username = token ? await verifySessionToken(token) : null
-
-  if (!username) {
+  if (!token) {
     const loginUrl = new URL('/login', request.url)
-    loginUrl.searchParams.set('next', pathname)
+    loginUrl.searchParams.set('next', request.nextUrl.pathname)
     return NextResponse.redirect(loginUrl)
   }
 
