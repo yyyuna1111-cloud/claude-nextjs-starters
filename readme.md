@@ -1,3 +1,21 @@
+# MLOps Dashboard
+
+## 접속 방법
+
+1. `/etc/hosts` 등록
+
+```bash
+sudo sh -c 'echo "10.70.171.187 mlops-dashboard.local" >> /etc/hosts'
+```
+
+2. 브라우저에서 접속
+
+```
+http://mlops-dashboard.local:31116
+```
+
+---
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started

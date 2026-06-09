@@ -30,20 +30,36 @@ hub:
       c.JupyterHub.allow_named_servers = True
     spawnHook: |
       DEFAULT_IMAGE = "10.70.170.227:80/jupyter/base-notebook:x86_64-python-3.11.6"
+      EXTRA_PVC_MOUNTS = {
+          "shared-sllm": "/home/jovyan/shared-sllm",
+      }
       async def pre_spawn_hook(spawner):
           username = spawner.user.name
           servername = spawner.name or "default"
           image = spawner.user_options.get("image", DEFAULT_IMAGE)
           spawner.image = image
-          spawner.volumes = [{
+          volumes = [{
               "name": "personal-storage",
               "persistentVolumeClaim": {"claimName": f"personal-{username}"},
           }]
-          spawner.volume_mounts = [{
+          volume_mounts = [{
               "name": "personal-storage",
               "mountPath": "/home/jovyan/work",
               "subPath": f"{username}/{servername}",
           }]
+          extra_pvcs = spawner.user_options.get("extra_pvcs", [])
+          for pvc_name in extra_pvcs:
+              if pvc_name in EXTRA_PVC_MOUNTS:
+                  volumes.append({
+                      "name": pvc_name,
+                      "persistentVolumeClaim": {"claimName": pvc_name},
+                  })
+                  volume_mounts.append({
+                      "name": pvc_name,
+                      "mountPath": EXTRA_PVC_MOUNTS[pvc_name],
+                  })
+          spawner.volumes = volumes
+          spawner.volume_mounts = volume_mounts
       c.KubeSpawner.pre_spawn_hook = pre_spawn_hook
 
 singleuser:

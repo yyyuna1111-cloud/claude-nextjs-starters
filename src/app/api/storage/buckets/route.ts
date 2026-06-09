@@ -1,9 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server'
+import fs from 'fs'
 
 const FILER_URL = process.env.SEAWEEDFS_FILER_URL ?? 'http://10.70.171.177:31994'
+const NFS_SLLM_PATH = '/mnt/sllm'
 
-// Go의 os.ModeDir 비트(1<<31)로 디렉토리 판별
 function isDir(mode: number): boolean {
   return (mode >>> 31) === 1
 }
@@ -28,9 +29,26 @@ async function listDir(path: string): Promise<FilerEntry[]> {
   return data.Entries ?? []
 }
 
+function getNfsBucketInfo() {
+  try {
+    const entries = fs.readdirSync(NFS_SLLM_PATH, { withFileTypes: true })
+    let totalSize = 0
+    let fileCount = 0
+    for (const e of entries) {
+      if (e.isFile()) {
+        const stat = fs.statSync(`${NFS_SLLM_PATH}/${e.name}`)
+        totalSize += stat.size
+        fileCount++
+      }
+    }
+    return { name: 'shared-sllm', createdAt: '', totalSize, fileCount, isNfs: true }
+  } catch {
+    return { name: 'shared-sllm', createdAt: '', totalSize: 0, fileCount: 0, isNfs: true }
+  }
+}
+
 export async function GET() {
   try {
-    // /buckets/ 아래 디렉토리 = 각 PVC 버킷
     const entries = await listDir('/buckets/')
     const bucketEntries = entries.filter(
       e => isDir(e.Mode) && (
@@ -43,7 +61,6 @@ export async function GET() {
     const buckets = await Promise.all(
       bucketEntries.map(async e => {
         const name = e.FullPath.split('/').filter(Boolean).pop() ?? ''
-        // 버킷 루트의 파일 목록으로 사용량 추정 (1단계 깊이)
         let totalSize = 0
         let fileCount = 0
         try {
@@ -61,9 +78,9 @@ export async function GET() {
       })
     )
 
-    return NextResponse.json({ buckets })
+    return NextResponse.json({ buckets: [...buckets, getNfsBucketInfo()] })
   } catch (err: any) {
     console.error('[Storage Buckets]', err.message)
-    return NextResponse.json({ buckets: [], error: err.message })
+    return NextResponse.json({ buckets: [getNfsBucketInfo()], error: err.message })
   }
 }
