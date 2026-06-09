@@ -300,6 +300,27 @@ export default function ScrapingPage() {
     fetchAll()
   }, [fetchAll])
 
+  // 자동 갱신: Running 워크플로우 있으면 5초, 없으면 30초
+  useEffect(() => {
+    const hasRunning = workflows.some(wf => wf.status?.phase === 'Running')
+    const interval = hasRunning ? 5000 : 30000
+    const id = setInterval(fetchAll, interval)
+    return () => clearInterval(id)
+  }, [fetchAll, workflows])
+
+  // 펼쳐진 DAG 자동 갱신 (5초)
+  useEffect(() => {
+    if (!expandedWf) return
+    const id = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/scraping/workflows/${expandedWf}`)
+        const data = await res.json()
+        setWfDetail(data)
+      } catch {}
+    }, 5000)
+    return () => clearInterval(id)
+  }, [expandedWf])
+
   // ── 워크플로우 행 클릭 → DAG 펼침 ─────────────────────────────────────────
   async function handleWfClick(name: string) {
     if (expandedWf === name) {
@@ -353,6 +374,7 @@ export default function ScrapingPage() {
         data.workflow?.metadata?.name ?? data.metadata?.name ?? '(이름 없음)'
       addEvent(`워크플로우 제출 완료: ${wfName}`, 'success')
       setLiveWfName(wfName)
+      fetchAll()
       startPolling(wfName)
       startLogStream(wfName)
     } catch (e) {
@@ -944,6 +966,14 @@ export default function ScrapingPage() {
             </div>
           )}
 
+
+          {/* DAG 단계 */}
+          {liveSteps.length > 0 && (
+            <div className="mt-4">
+              <p className="text-muted-foreground mb-2 text-xs">파이프라인 단계</p>
+              <PipelineDag steps={liveSteps} />
+            </div>
+          )}
 
           {/* 이벤트 */}
           <div className="mt-4 flex min-h-0 flex-1 flex-col overflow-auto">
