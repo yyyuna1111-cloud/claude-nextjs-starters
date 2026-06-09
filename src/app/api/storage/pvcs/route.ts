@@ -51,9 +51,11 @@ export async function GET() {
       const name: string = pvc.metadata?.name ?? 'unknown'
       const capacityStr: string =
         pvc.status?.capacity?.storage ?? pvc.spec?.resources?.requests?.storage ?? '0'
-      // spec.volumeName → PV API 매핑 → '' 순으로 폴백
-      const volumeName: string =
-        pvc.spec?.volumeName || pvcToBucket[name] || ''
+      const storageClass: string = pvc.spec?.storageClassName ?? ''
+      // static PV(storageClass 없음)는 PVC 이름을 버킷 식별자로 사용
+      const volumeName: string = storageClass === ''
+        ? name
+        : (pvc.spec?.volumeName || pvcToBucket[name] || '')
 
       return {
         name,
