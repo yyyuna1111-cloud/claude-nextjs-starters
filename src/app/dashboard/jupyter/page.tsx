@@ -9,8 +9,14 @@ import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { toast } from 'sonner'
+
+interface JupyterImage {
+  label: string
+  value: string
+}
 
 interface Server {
   name: string
@@ -42,6 +48,8 @@ export default function JupyterPage() {
   const [nameError, setNameError] = useState('')
   const [creating, setCreating] = useState(false)
   const [deletingName, setDeletingName] = useState<string | null>(null)
+  const [jupyterImages, setJupyterImages] = useState<JupyterImage[]>([])
+  const [imageMode, setImageMode] = useState<'select' | 'manual'>('select')
 
   const fetchServers = useCallback(async (u: string) => {
     setLoading(true)
@@ -85,12 +93,21 @@ export default function JupyterPage() {
     }
   }
 
+  useEffect(() => {
+    if (!dialogOpen) return
+    fetch('/api/registry/jupyter-images')
+      .then(r => r.json())
+      .then(data => setJupyterImages(data.images ?? []))
+      .catch(() => setJupyterImages([]))
+  }, [dialogOpen])
+
   function handleDialogClose() {
     setDialogOpen(false)
     setNewName('')
     setNewImage('')
     setMountSllm(false)
     setNameError('')
+    setImageMode('select')
   }
 
   async function handleCreate() {
@@ -232,13 +249,44 @@ export default function JupyterPage() {
               <p className="text-xs text-muted-foreground">영소문자, 숫자, 하이픈만 사용 가능 (예: my-env, env01)</p>
             </div>
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">이미지 <span className="text-muted-foreground font-normal">(선택)</span></label>
-              <Input
-                placeholder="기본값 사용 시 비워두기"
-                value={newImage}
-                onChange={e => setNewImage(e.target.value)}
-                className="h-9"
-              />
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium">이미지 <span className="text-muted-foreground font-normal">(선택)</span></label>
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground underline underline-offset-2"
+                  onClick={() => {
+                    setImageMode(m => m === 'select' ? 'manual' : 'select')
+                    setNewImage('')
+                  }}
+                >
+                  {imageMode === 'select' ? '직접 입력' : '레지스트리에서 선택'}
+                </button>
+              </div>
+              {imageMode === 'select' ? (
+                <Select
+                  value={newImage}
+                  onValueChange={setNewImage}
+                >
+                  <SelectTrigger className="h-9 text-sm">
+                    <SelectValue placeholder={jupyterImages.length === 0 ? '등록된 Jupyter 이미지 없음' : '이미지 선택...'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">기본 이미지 사용</SelectItem>
+                    {jupyterImages.map(img => (
+                      <SelectItem key={img.value} value={img.value}>
+                        <span className="font-mono text-xs">{img.label}</span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  placeholder="registry/image:tag"
+                  value={newImage}
+                  onChange={e => setNewImage(e.target.value)}
+                  className="h-9 font-mono text-sm"
+                />
+              )}
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">스토리지</label>
