@@ -65,12 +65,10 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  const user_options: any = {}
-  if (image) user_options.image = image
-  if (Array.isArray(extra_pvcs) && extra_pvcs.length > 0) user_options.extra_pvcs = extra_pvcs
-
+  // JupyterHub API는 POST body 전체를 spawner.user_options로 저장
   const body: any = {}
-  if (Object.keys(user_options).length > 0) body.user_options = user_options
+  if (image) body.image = image
+  if (Array.isArray(extra_pvcs) && extra_pvcs.length > 0) body.extra_pvcs = extra_pvcs
 
   const res = await fetch(`${env.JUPYTERHUB_URL}/hub/api/users/${username}/servers/${name}`, {
     method: 'POST',
