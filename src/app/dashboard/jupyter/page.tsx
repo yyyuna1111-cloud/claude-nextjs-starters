@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { toast } from 'sonner'
 
@@ -17,6 +18,8 @@ interface Server {
   pending: string | null
   url: string
 }
+
+const SERVER_NAME_REGEX = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/
 
 function StatusBadge({ ready, pending }: { ready: boolean; pending: string | null }) {
   if (pending === 'spawn') return <Badge className="bg-yellow-500 text-white">Starting</Badge>
@@ -32,9 +35,11 @@ export default function JupyterPage() {
   const [pendingOpenUrl, setPendingOpenUrl] = useState<string | null>(null)
   const [hasPVC, setHasPVC] = useState<boolean | null>(null)
   const [loading, setLoading] = useState(true)
+  const [dialogOpen, setDialogOpen] = useState(false)
   const [newName, setNewName] = useState('')
   const [newImage, setNewImage] = useState('')
   const [mountSllm, setMountSllm] = useState(false)
+  const [nameError, setNameError] = useState('')
   const [creating, setCreating] = useState(false)
   const [deletingName, setDeletingName] = useState<string | null>(null)
 
@@ -63,7 +68,6 @@ export default function JupyterPage() {
     fetchServers(user)
   }, [loaded, user, fetchServers])
 
-  // pending 상태 서버 있으면 3초마다 자동 폴링
   useEffect(() => {
     if (!user) return
     const hasPending = servers.some(s => s.pending !== null)
@@ -72,8 +76,29 @@ export default function JupyterPage() {
     return () => clearInterval(timer)
   }, [servers, user, fetchServers])
 
+  function handleNameChange(value: string) {
+    setNewName(value)
+    if (value && !SERVER_NAME_REGEX.test(value)) {
+      setNameError('영소문자, 숫자, 하이픈만 사용 가능하며 영소문자/숫자로 시작·끝나야 합니다')
+    } else {
+      setNameError('')
+    }
+  }
+
+  function handleDialogClose() {
+    setDialogOpen(false)
+    setNewName('')
+    setNewImage('')
+    setMountSllm(false)
+    setNameError('')
+  }
+
   async function handleCreate() {
     if (!newName.trim() || !user) return
+    if (!SERVER_NAME_REGEX.test(newName.trim())) {
+      setNameError('영소문자, 숫자, 하이픈만 사용 가능하며 영소문자/숫자로 시작·끝나야 합니다')
+      return
+    }
     setCreating(true)
     try {
       const res = await fetch('/api/jupyter/servers', {
@@ -89,9 +114,7 @@ export default function JupyterPage() {
       const data = await res.json()
       if (data.success) {
         toast.success(`${newName} 생성 중...`)
-        setNewName('')
-        setNewImage('')
-        setMountSllm(false)
+        handleDialogClose()
         fetchServers(user)
       } else {
         toast.error(data.error ?? '생성 실패')
@@ -114,7 +137,7 @@ export default function JupyterPage() {
       })
       const data = await res.json()
       const url = data.token ? `${server.url}?token=${data.token}` : server.url
-      setPendingOpenUrl(url)  // logout iframe onLoad 후 이 URL 열기
+      setPendingOpenUrl(url)
     } catch {
       window.open(server.url, '_blank')
       setOpeningServer(null)
@@ -162,10 +185,16 @@ export default function JupyterPage() {
           <h1 className="text-xl font-bold tracking-tight">Jupyter Notebooks</h1>
           <p className="text-sm text-muted-foreground mt-0.5">개인 개발환경 생성 및 관리</p>
         </div>
-        <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => fetchServers(user)}>
-          <RefreshCw className="size-3.5" />
-          새로고침
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => fetchServers(user)}>
+            <RefreshCw className="size-3.5" />
+            새로고침
+          </Button>
+          <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setDialogOpen(true)}>
+            <Plus className="size-3.5" />
+            새 서버
+          </Button>
+        </div>
       </div>
 
       {/* JupyterHub 세션 로그아웃 후 노트북 열기 */}
@@ -182,45 +211,71 @@ export default function JupyterPage() {
         />
       )}
 
-      {/* 생성 폼 */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold">새 노트북 서버 생성</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            <div className="flex gap-2">
+      {/* 서버 생성 다이얼로그 */}
+      <Dialog open={dialogOpen} onOpenChange={open => !open && handleDialogClose()}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>새 노트북 서버 생성</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">서버 이름</label>
               <Input
-                placeholder="서버 이름 (예: pytorch-env)"
+                placeholder="예: pytorch-env"
                 value={newName}
-                onChange={e => setNewName(e.target.value)}
+                onChange={e => handleNameChange(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleCreate()}
-                className="h-8 text-sm max-w-xs"
+                className="h-9"
+                autoFocus
               />
+              {nameError && <p className="text-xs text-destructive">{nameError}</p>}
+              <p className="text-xs text-muted-foreground">영소문자, 숫자, 하이픈만 사용 가능 (예: my-env, env01)</p>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">이미지 <span className="text-muted-foreground font-normal">(선택)</span></label>
               <Input
-                placeholder="이미지 (기본값 사용 시 비워두기)"
+                placeholder="기본값 사용 시 비워두기"
                 value={newImage}
                 onChange={e => setNewImage(e.target.value)}
-                className="h-8 text-sm flex-1"
+                className="h-9"
               />
-              <Button size="sm" className="h-8 gap-1.5 shrink-0" onClick={handleCreate} disabled={!newName.trim() || creating}>
-                {creating ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">스토리지</label>
+              <div className="rounded-md border p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Checkbox id="mount-personal" checked disabled />
+                  <label htmlFor="mount-personal" className="text-sm cursor-default">
+                    개인 스토리지 — <span className="font-mono text-xs">/home/jovyan/work</span>
+                    <span className="ml-1 text-xs text-muted-foreground">(기본)</span>
+                  </label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="mount-sllm"
+                    checked={mountSllm}
+                    onCheckedChange={v => setMountSllm(!!v)}
+                  />
+                  <label htmlFor="mount-sllm" className="text-sm cursor-pointer">
+                    shared-sllm — <span className="font-mono text-xs">/home/jovyan/shared-sllm</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="outline" size="sm" onClick={handleDialogClose}>취소</Button>
+              <Button
+                size="sm"
+                onClick={handleCreate}
+                disabled={!newName.trim() || !!nameError || creating}
+              >
+                {creating ? <Loader2 className="size-3.5 animate-spin mr-1.5" /> : <Plus className="size-3.5 mr-1.5" />}
                 생성
               </Button>
             </div>
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="mount-sllm"
-                checked={mountSllm}
-                onCheckedChange={v => setMountSllm(!!v)}
-              />
-              <label htmlFor="mount-sllm" className="text-xs text-muted-foreground cursor-pointer select-none">
-                shared-sllm 마운트 — <span className="font-mono">/home/jovyan/shared-sllm</span>
-              </label>
-            </div>
           </div>
-        </CardContent>
-      </Card>
+        </DialogContent>
+      </Dialog>
 
       {/* 서버 목록 */}
       <Card>
