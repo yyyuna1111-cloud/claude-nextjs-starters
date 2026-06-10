@@ -1,7 +1,7 @@
 'use client'
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Package,
   Tag,
@@ -16,6 +16,7 @@ import {
   Box,
   Download,
   Upload,
+  Loader2,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -162,6 +163,146 @@ function ManifestModal({
   )
 }
 
+// ─── 업로드 다이얼로그 ────────────────────────────────────────────────────────
+
+function UploadDialog({ open, onClose, onSuccess }: { open: boolean; onClose: () => void; onSuccess: () => void }) {
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [file, setFile] = useState<File | null>(null)
+  const [name, setName] = useState('')
+  const [tag, setTag] = useState('latest')
+  const [uploading, setUploading] = useState(false)
+  const [error, setError] = useState('')
+
+  function reset() {
+    setFile(null)
+    setName('')
+    setTag('latest')
+    setError('')
+    if (fileRef.current) fileRef.current.value = ''
+  }
+
+  function handleClose() {
+    if (uploading) return
+    reset()
+    onClose()
+  }
+
+  async function handleUpload() {
+    if (!file || !name.trim()) return
+    setUploading(true)
+    setError('')
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('name', name.trim())
+      fd.append('tag', tag.trim() || 'latest')
+      const res = await fetch('/api/registry/upload', { method: 'POST', body: fd })
+      const data = await res.json()
+      if (data.success) {
+        toast.success(`${name.trim()}:${tag.trim() || 'latest'} 업로드 완료`)
+        reset()
+        onSuccess()
+        onClose()
+      } else {
+        setError(data.error ?? '업로드 실패')
+      }
+    } catch {
+      setError('업로드 실패')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={v => !v && handleClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>이미지 업로드</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 pt-2">
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">이미지 파일 (.tar)</label>
+            <div
+              className="flex items-center gap-2 rounded-md border border-dashed px-3 py-3 cursor-pointer hover:bg-muted/40 transition-colors"
+              onClick={() => fileRef.current?.click()}
+            >
+              <Upload className="size-4 text-muted-foreground shrink-0" />
+              <span className="text-sm text-muted-foreground truncate">
+                {file ? file.name : '파일 선택...'}
+              </span>
+              {file && (
+                <span className="ml-auto text-xs text-muted-foreground shrink-0">
+                  {(file.size / 1024 / 1024).toFixed(0)} MB
+                </span>
+              )}
+            </div>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".tar"
+              className="hidden"
+              onChange={e => setFile(e.target.files?.[0] ?? null)}
+            />
+            <p className="text-xs text-muted-foreground">
+              <code className="text-xs">docker save image:tag -o image.tar</code> 로 생성한 파일
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">레지스트리 경로</label>
+            <Input
+              placeholder="예: jupyter/pytorch, myteam/base"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              className="h-9 font-mono text-sm"
+            />
+            <p className="text-xs text-muted-foreground">
+              Jupyter 노트북용은 <code className="text-xs">jupyter/</code> 접두사 권장
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">태그</label>
+            <Input
+              placeholder="latest"
+              value={tag}
+              onChange={e => setTag(e.target.value)}
+              className="h-9 font-mono text-sm"
+            />
+          </div>
+
+          {error && (
+            <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+              <AlertCircle className="size-3.5 mt-0.5 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {uploading && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" />
+              <span>업로드 중... 이미지 크기에 따라 수 분 소요될 수 있습니다</span>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" size="sm" onClick={handleClose} disabled={uploading}>취소</Button>
+            <Button
+              size="sm"
+              onClick={handleUpload}
+              disabled={!file || !name.trim() || uploading}
+            >
+              {uploading
+                ? <><Loader2 className="size-3.5 animate-spin mr-1.5" />업로드 중</>
+                : <><Upload className="size-3.5 mr-1.5" />업로드</>}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ─── 메인 페이지 ─────────────────────────────────────────────────────────────
 
 export default function RegistryPage() {
@@ -177,6 +318,7 @@ export default function RegistryPage() {
   const [manifestLoading, setManifestLoading] = useState<string | null>(null)
 
   const [error, setError] = useState<string | null>(null)
+  const [uploadOpen, setUploadOpen] = useState(false)
 
   // 레포 목록 조회
   const fetchRepos = useCallback(async () => {
@@ -263,10 +405,16 @@ export default function RegistryPage() {
             {REGISTRY_HOST} — Docker 이미지 브라우저
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={fetchRepos} className="h-8 gap-1.5 text-xs">
-          <RefreshCw className="size-3" />
-          새로고침
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={fetchRepos} className="h-8 gap-1.5 text-xs">
+            <RefreshCw className="size-3" />
+            새로고침
+          </Button>
+          <Button size="sm" onClick={() => setUploadOpen(true)} className="h-8 gap-1.5 text-xs">
+            <Upload className="size-3" />
+            이미지 업로드
+          </Button>
+        </div>
       </div>
 
       {error && (
@@ -435,6 +583,12 @@ export default function RegistryPage() {
           )}
         </Card>
       </div>
+
+      <UploadDialog
+        open={uploadOpen}
+        onClose={() => setUploadOpen(false)}
+        onSuccess={fetchRepos}
+      />
 
       {/* 이미지 상세 모달 */}
       <ManifestModal
