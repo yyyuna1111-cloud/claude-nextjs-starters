@@ -2,6 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
+import Image from 'next/image'
 import {
   Package,
   Tag,
@@ -17,6 +18,7 @@ import {
   Download,
   Upload,
   Loader2,
+  BookOpen,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -156,6 +158,88 @@ function ManifestModal({
               <Trash2 className="size-3.5" />
               이 태그 삭제
             </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ─── Docker 설정 가이드 다이얼로그 ───────────────────────────────────────────
+
+function DockerGuideDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const REGISTRY_HOST = process.env.NEXT_PUBLIC_REGISTRY_HOST ?? '10.70.170.227'
+
+  return (
+    <Dialog open={open} onOpenChange={v => !v && onClose()}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <BookOpen className="size-4" />
+            Docker Push 설정 가이드
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-5 pt-2">
+          <p className="text-sm text-muted-foreground">
+            Private registry에 <code className="text-xs bg-muted px-1 py-0.5 rounded">{REGISTRY_HOST}</code>는 HTTP를 사용하므로
+            Docker에 insecure registry로 등록해야 <code className="text-xs bg-muted px-1 py-0.5 rounded">docker push</code>가 가능합니다.
+          </p>
+
+          {/* Docker Desktop */}
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold">1. Docker Desktop (Mac / Windows)</h3>
+            <p className="text-xs text-muted-foreground">
+              Docker Desktop → Settings → <strong>Docker Engine</strong> 탭에서 아래 JSON을 입력 후 <strong>Apply &amp; restart</strong>
+            </p>
+            <pre className="text-xs bg-muted rounded-md px-4 py-3 font-mono">{`{
+  "insecure-registries": [
+    "${REGISTRY_HOST}:80"
+  ]
+}`}</pre>
+            <div className="rounded-md overflow-hidden border">
+              <Image
+                src="/docker-insecure-registry-guide.png"
+                alt="Docker Desktop 설정 화면"
+                width={800}
+                height={420}
+                className="w-full"
+              />
+            </div>
+          </div>
+
+          {/* Linux */}
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold">2. Linux (Docker Engine)</h3>
+            <p className="text-xs text-muted-foreground">
+              <code className="text-xs bg-muted px-1 py-0.5 rounded">/etc/docker/daemon.json</code> 파일에 동일하게 추가 후 재시작
+            </p>
+            <pre className="text-xs bg-muted rounded-md px-4 py-3 font-mono">{`sudo vi /etc/docker/daemon.json
+# 아래 내용 추가
+{
+  "insecure-registries": [
+    "${REGISTRY_HOST}:80"
+  ]
+}
+
+sudo systemctl restart docker`}</pre>
+          </div>
+
+          {/* Push 명령어 */}
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold">3. 이미지 Push</h3>
+            <pre className="text-xs bg-muted rounded-md px-4 py-3 font-mono">{`# 로컬 이미지에 태그 지정
+docker tag <이미지명>:<태그> ${REGISTRY_HOST}:80/<경로>:<태그>
+
+# Push
+docker push ${REGISTRY_HOST}:80/<경로>:<태그>
+
+# 예시 (Jupyter용)
+docker tag my-pytorch:latest ${REGISTRY_HOST}:80/jupyter/pytorch:latest
+docker push ${REGISTRY_HOST}:80/jupyter/pytorch:latest`}</pre>
+          </div>
+
+          <div className="flex justify-end pt-1">
+            <Button size="sm" variant="outline" onClick={onClose}>닫기</Button>
           </div>
         </div>
       </DialogContent>
@@ -319,6 +403,7 @@ export default function RegistryPage() {
 
   const [error, setError] = useState<string | null>(null)
   const [uploadOpen, setUploadOpen] = useState(false)
+  const [guideOpen, setGuideOpen] = useState(false)
 
   // 레포 목록 조회
   const fetchRepos = useCallback(async () => {
@@ -406,6 +491,10 @@ export default function RegistryPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={() => setGuideOpen(true)} className="h-8 gap-1.5 text-xs">
+            <BookOpen className="size-3" />
+            Push 가이드
+          </Button>
           <Button variant="outline" size="sm" onClick={fetchRepos} className="h-8 gap-1.5 text-xs">
             <RefreshCw className="size-3" />
             새로고침
@@ -583,6 +672,8 @@ export default function RegistryPage() {
           )}
         </Card>
       </div>
+
+      <DockerGuideDialog open={guideOpen} onClose={() => setGuideOpen(false)} />
 
       <UploadDialog
         open={uploadOpen}
