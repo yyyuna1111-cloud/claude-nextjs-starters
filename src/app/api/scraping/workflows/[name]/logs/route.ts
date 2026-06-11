@@ -6,10 +6,37 @@ import { NextResponse } from 'next/server'
 const ARGO = process.env.ARGO
 
 async function fetchPodLog(wfName: string, podName: string): Promise<string[]> {
-  const url = `${ARGO}/api/v1/workflows/argo/${wfName}/log?podName=${podName}&logOptions.follow=false&logOptions.timestamps=true`
-  const res = await fetch(url, { cache: 'no-store' })
-  if (!res.ok) return []
-  const text = await res.text()
+  const url = `${ARGO}/api/v1/workflows/argo/${wfName}/log?podName=${podName}&logOptions.container=main&logOptions.follow=true&logOptions.timestamps=true`
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 5000)
+
+  let text = ''
+  try {
+    const res = await fetch(url, { cache: 'no-store', signal: controller.signal })
+    if (!res.ok) {
+      console.error(`[logs] fetchPodLog 실패 pod=${podName} status=${res.status}`)
+      return []
+    }
+    const reader = res.body?.getReader()
+    if (!reader) return []
+    const decoder = new TextDecoder()
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        if (value) text += decoder.decode(value, { stream: true })
+      }
+    } catch {
+      // timeout — use whatever arrived so far
+    } finally {
+      reader.cancel()
+    }
+  } catch {
+    // fetch itself failed
+  } finally {
+    clearTimeout(timer)
+  }
+
   return text
     .split('\n')
     .filter(l => l.trim())
@@ -55,8 +82,10 @@ export async function GET(
     const results = await Promise.all(targets.map(pod => fetchPodLog(name, pod)))
     const lines = results.flat()
 
+    console.log(`[logs] 최종 lines=${lines.length}`)
     return NextResponse.json({ lines })
   } catch (e) {
+    console.error('[logs] route error:', e)
     return NextResponse.json({ error: String(e) }, { status: 500 })
   }
 }

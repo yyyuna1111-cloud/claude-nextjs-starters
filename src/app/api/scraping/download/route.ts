@@ -19,7 +19,7 @@ const BUCKET = process.env.S3_BUCKET ?? 'tax'
 export async function GET(request: NextRequest) {
   const format = request.nextUrl.searchParams.get('format') ?? 'csv'
 
-  const cmd = new GetObjectCommand({ Bucket: BUCKET, Key: 'output/tax_data.jsonl' })
+  const cmd = new GetObjectCommand({ Bucket: BUCKET, Key: 'output/tax1_data.jsonl' })
   const res = await s3.send(cmd)
   const bodyText = await res.Body?.transformToString('utf-8') ?? ''
 
