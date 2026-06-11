@@ -25,6 +25,7 @@ export async function POST(req: Request) {
       resourceKind: 'WorkflowTemplate',
       resourceName: 'tax-pipeline-secret',
       submitOptions: {
+
         parameters: Object.entries(params).map(([k, v]) => `${k}=${v}`),
       },
     }),

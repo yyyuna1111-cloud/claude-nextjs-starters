@@ -1,91 +1,75 @@
 // GET /api/scraping/workflows/[name]/logs
-// Argo workflow 파드별 로그를 수집해서 합칩니다.
+// Argo 로그 스트림을 브라우저로 실시간 프록시합니다.
 
-import { NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 
 const ARGO = process.env.ARGO
 
-async function fetchPodLog(wfName: string, podName: string): Promise<string[]> {
-  const url = `${ARGO}/api/v1/workflows/argo/${wfName}/log?podName=${podName}&logOptions.container=main&logOptions.follow=true&logOptions.timestamps=true`
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 5000)
-
-  let text = ''
+function parseLogLine(line: string): string {
+  if (!line.trim()) return ''
   try {
-    const res = await fetch(url, { cache: 'no-store', signal: controller.signal })
-    if (!res.ok) {
-      console.error(`[logs] fetchPodLog 실패 pod=${podName} status=${res.status}`)
-      return []
-    }
-    const reader = res.body?.getReader()
-    if (!reader) return []
-    const decoder = new TextDecoder()
+    const obj = JSON.parse(line)
+    const content = obj?.result?.content ?? obj?.content ?? line
     try {
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        if (value) text += decoder.decode(value, { stream: true })
-      }
+      const inner = JSON.parse(content)
+      return inner?.jsonPayload?.message ?? inner?.message ?? content
     } catch {
-      // timeout — use whatever arrived so far
-    } finally {
-      reader.cancel()
+      return content
     }
   } catch {
-    // fetch itself failed
-  } finally {
-    clearTimeout(timer)
+    return line
   }
-
-  return text
-    .split('\n')
-    .filter(l => l.trim())
-    .map(l => {
-      try {
-        const obj = JSON.parse(l)
-        return obj?.result?.content ?? l
-      } catch {
-        return l
-      }
-    })
-    .filter(l => l.trim())
 }
 
 export async function GET(
-  _req: Request,
+  req: NextRequest,
   { params }: { params: Promise<{ name: string }> }
 ) {
   const { name } = await params
   if (!ARGO) {
-    return NextResponse.json({ error: 'ARGO 환경변수 없음' }, { status: 500 })
+    return new Response('ARGO 환경변수 없음', { status: 500 })
   }
 
-  try {
-    // 1. 워크플로우 상세 조회 → 파드 이름 목록 추출
-    const wfRes = await fetch(`${ARGO}/api/v1/workflows/argo/${name}`, { cache: 'no-store' })
-    if (!wfRes.ok) {
-      return NextResponse.json({ error: `워크플로우 조회 실패: ${wfRes.status}` }, { status: 500 })
-    }
-    const wf = await wfRes.json()
-    const nodes: Record<string, { type?: string; id?: string }> = wf?.status?.nodes ?? {}
+  const podName = req.nextUrl.searchParams.get('podName')
+  const url = podName
+    ? `${ARGO}/api/v1/workflows/argo/${name}/log?podName=${podName}&logOptions.container=main&logOptions.follow=true`
+    : `${ARGO}/api/v1/workflows/argo/${name}/log?logOptions.follow=true`
 
-    // Pod 타입 노드만 추출 (실제 실행 컨테이너)
-    const podNames = Object.values(nodes)
-      .filter(n => n.type === 'Pod')
-      .map(n => n.id)
-      .filter(Boolean) as string[]
-
-    // Pod 노드가 없으면 워크플로우 이름 자체로 시도
-    const targets = podNames.length > 0 ? podNames : [name]
-
-    // 2. 파드별 로그 병렬 수집
-    const results = await Promise.all(targets.map(pod => fetchPodLog(name, pod)))
-    const lines = results.flat()
-
-    console.log(`[logs] 최종 lines=${lines.length}`)
-    return NextResponse.json({ lines })
-  } catch (e) {
-    console.error('[logs] route error:', e)
-    return NextResponse.json({ error: String(e) }, { status: 500 })
+  const argoRes = await fetch(url, { cache: 'no-store' }).catch(() => null)
+  if (!argoRes?.ok) {
+    return new Response('', { status: 200 })
   }
+
+  // Argo 스트림을 파싱해서 텍스트 줄로 변환 후 SSE로 전달
+  const stream = new ReadableStream({
+    async start(controller) {
+      const reader = argoRes.body?.getReader()
+      if (!reader) { controller.close(); return }
+      const decoder = new TextDecoder()
+      let buffer = ''
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          console.log(`[logs-stream] chunk bytes=${value?.length ?? 0}`)
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() ?? ''
+          for (const line of lines) {
+            const parsed = parseLogLine(line)
+            if (parsed.trim()) {
+              controller.enqueue(new TextEncoder().encode(parsed + '\n'))
+            }
+          }
+        }
+      } catch { /* stream closed */ } finally {
+        reader.cancel()
+        controller.close()
+      }
+    },
+  })
+
+  return new Response(stream, {
+    headers: { 'Content-Type': 'text/plain; charset=utf-8', 'X-Accel-Buffering': 'no' },
+  })
 }
