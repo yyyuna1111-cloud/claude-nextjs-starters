@@ -264,14 +264,14 @@ export default function JupyterPage() {
               </div>
               {imageMode === 'select' ? (
                 <Select
-                  value={newImage}
-                  onValueChange={setNewImage}
+                  value={newImage || '__default__'}
+                  onValueChange={v => setNewImage(v === '__default__' ? '' : v)}
                 >
                   <SelectTrigger className="h-9 text-sm">
                     <SelectValue placeholder={jupyterImages.length === 0 ? '등록된 Jupyter 이미지 없음' : '이미지 선택...'} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">기본 이미지 사용</SelectItem>
+                    <SelectItem value="__default__">기본 이미지 사용</SelectItem>
                     {jupyterImages.map(img => (
                       <SelectItem key={img.value} value={img.value}>
                         <span className="font-mono text-xs">{img.label}</span>
