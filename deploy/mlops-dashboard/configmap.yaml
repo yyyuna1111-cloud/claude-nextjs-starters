@@ -32,7 +32,7 @@ data:
   SEAWEEDFS_SECRET_KEY: "skyadmin"
   SEAWEEDFS_BUCKET: "mlpipeline"
   S3_ENDPOINT: "http://seaweedfs.kubeflow.svc.cluster.local:8333"
-  S3_BUCKET: "tax"
+  S3_BUCKET: "tax-new"
 
   # Argo Workflows
   ARGO: "http://argo-workflows-server.argo.svc.cluster.local:2746"
