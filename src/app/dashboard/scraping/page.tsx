@@ -113,6 +113,49 @@ function formatBytes(bytes: number): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`
 }
 
+function parseCronHuman(schedule: string): string {
+  const parts = schedule.trim().split(/\s+/)
+  if (parts.length !== 5) return schedule
+  const [min, hour, dom, month, dow] = parts
+  if (dom !== '*' || month !== '*') return schedule
+  const h = parseInt(hour), m = parseInt(min)
+  if (isNaN(h) || isNaN(m)) return schedule
+  const timeStr = `${h > 12 ? h - 12 : h === 0 ? 12 : h}:${m.toString().padStart(2, '0')}`
+  const period = h >= 12 ? '오후' : '오전'
+  if (dow === '*') return `매일 ${period} ${timeStr}`
+  const dayMap: Record<string, string> = { '1':'월', '2':'화', '3':'수', '4':'목', '5':'금', '6':'토', '0':'일', '7':'일' }
+  if (dow === '1-5') return `평일 ${period} ${timeStr}`
+  const days = dow.split(',').map(d => dayMap[d] ?? d).join('/')
+  return `매주 ${days} ${period} ${timeStr}`
+}
+
+function getNextCronRun(schedule: string, timezone: string): Date | null {
+  const parts = schedule.trim().split(/\s+/)
+  if (parts.length !== 5) return null
+  const [min, hour, dom, month, dow] = parts
+  if (dom !== '*' || month !== '*' || dow !== '*') return null
+  const h = parseInt(hour), m = parseInt(min)
+  if (isNaN(h) || isNaN(m)) return null
+
+  const now = new Date()
+  const tzNow = new Date(now.toLocaleString('en-US', { timeZone: timezone }))
+  const offset = now.getTime() - tzNow.getTime()
+
+  const next = new Date(tzNow)
+  next.setHours(h, m, 0, 0)
+  if (next <= tzNow) next.setDate(next.getDate() + 1)
+  return new Date(next.getTime() + offset)
+}
+
+function formatTimeUntil(date: Date): string {
+  const diff = date.getTime() - Date.now()
+  if (diff < 0) return '방금'
+  const h = Math.floor(diff / 3600000)
+  const m = Math.floor((diff % 3600000) / 60000)
+  if (h > 0) return `${h}시간 ${m}분 후`
+  return `${m}분 후`
+}
+
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—'
   const d = new Date(iso)
@@ -270,6 +313,9 @@ const [params, setParams] = useState<Record<string, string>>({
   const [dataDateFrom, setDataDateFrom] = useState('')
   const [dataDateTo, setDataDateTo] = useState('')
 
+  // 크론 스케줄
+  const [cronItems, setCronItems] = useState<Record<string, unknown>[]>([])
+
   // 트리거 라이브 패널
   const [liveOpen, setLiveOpen] = useState(false)
   const [liveWfName, setLiveWfName] = useState<string | null>(null)
@@ -278,6 +324,12 @@ const [params, setParams] = useState<Record<string, string>>({
   const [logLines, setLogLines] = useState<string[]>([])
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const logPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const logAbortRef = useRef<AbortController | null>(null)
+
+  function stopLogStream() {
+    if (logAbortRef.current) { logAbortRef.current.abort(); logAbortRef.current = null }
+    if (logPollRef.current) { clearInterval(logPollRef.current); logPollRef.current = null }
+  }
   const eventsEndRef = useRef<HTMLDivElement>(null)
   const logsEndRef = useRef<HTMLDivElement>(null)
 
@@ -285,20 +337,23 @@ const [params, setParams] = useState<Record<string, string>>({
   const fetchAll = useCallback(async () => {
     setLoading(true)
     try {
-      const [wfRes, runsRes, dataRes] = await Promise.all([
+      const [wfRes, runsRes, dataRes, cronRes] = await Promise.all([
         fetch('/api/scraping/workflows'),
         fetch('/api/scraping/runs'),
         fetch('/api/scraping/data?limit=0'),
+        fetch('/api/scraping/cron'),
       ])
-      const [wfData, runsData, rowsData] = await Promise.all([
+      const [wfData, runsData, rowsData, cronData] = await Promise.all([
         wfRes.json(),
         runsRes.json(),
         dataRes.json(),
+        cronRes.json(),
       ])
       setWorkflows(wfData.workflows ?? [])
       setRuns(runsData.runs ?? [])
       setDataRows(rowsData.rows ?? [])
       setDataTotal(rowsData.total ?? 0)
+      setCronItems(cronData.items ?? [])
     } catch {
       toast.error('데이터 로딩 중 오류가 발생했습니다.')
     } finally {
@@ -397,7 +452,7 @@ const [params, setParams] = useState<Record<string, string>>({
 
   function openLivePanel(wfName: string) {
     if (pollRef.current) clearInterval(pollRef.current)
-    if (logPollRef.current) clearInterval(logPollRef.current)
+    stopLogStream()
     setLiveOpen(true)
     setLiveWfName(wfName)
     setLiveWf(null)
@@ -419,6 +474,8 @@ const [params, setParams] = useState<Record<string, string>>({
     if (pollRef.current) clearInterval(pollRef.current)
 
     let prevPhase = ''
+    const prevNodePhase: Record<string, string> = {}
+
     pollRef.current = setInterval(async () => {
       try {
         const res = await fetch(`/api/scraping/workflows/${wfName}`)
@@ -427,14 +484,29 @@ const [params, setParams] = useState<Record<string, string>>({
 
         const phase = wf.status?.phase ?? 'Unknown'
         if (phase !== prevPhase) {
-          addEvent(`상태 변경: ${prevPhase || '—'} → ${phase}`, phase === 'Succeeded' ? 'success' : phase === 'Failed' || phase === 'Error' ? 'error' : 'info')
+          addEvent(`워크플로우: ${prevPhase || '—'} → ${phase}`, phase === 'Succeeded' ? 'success' : phase === 'Failed' || phase === 'Error' ? 'error' : 'info')
           prevPhase = phase
         }
+
+        // 파드별 단계 변화 이벤트
+        const nodes = (wf.status?.nodes ?? {}) as Record<string, Record<string, unknown>>
+        Object.values(nodes).forEach(node => {
+          if (node.type !== 'Pod') return
+          const nodeId = node.id as string
+          const nodePhase = node.phase as string
+          const displayName = (node.displayName as string) ?? nodeId
+          if (nodePhase && nodePhase !== prevNodePhase[nodeId]) {
+            const type = nodePhase === 'Succeeded' ? 'success' : (nodePhase === 'Failed' || nodePhase === 'Error') ? 'error' : 'info'
+            const msg = node.message ? `: ${node.message}` : ''
+            addEvent(`[${displayName}] ${nodePhase}${msg}`, type)
+            prevNodePhase[nodeId] = nodePhase
+          }
+        })
 
         if (phase === 'Succeeded' || phase === 'Failed' || phase === 'Error') {
           clearInterval(pollRef.current!)
           pollRef.current = null
-          addEvent('워크플로우 종료', phase === 'Succeeded' ? 'success' : 'error')
+          stopLogStream()
           fetchAll()
         }
       } catch {
@@ -444,34 +516,43 @@ const [params, setParams] = useState<Record<string, string>>({
   }
 
   function startLogStream(wfName: string) {
-    if (logPollRef.current) clearInterval(logPollRef.current)
+    stopLogStream()
 
-    const fetchLogs = async () => {
+    const controller = new AbortController()
+    logAbortRef.current = controller
+
+    const run = async () => {
       try {
-        const res = await fetch(`/api/scraping/workflows/${wfName}/logs`)
-        const data = await res.json()
-        if (data.error) {
-          addEvent(`로그 오류: ${data.error}`, 'error')
-          return
+        const res = await fetch(`/api/scraping/workflows/${wfName}/logs`, { signal: controller.signal })
+        if (!res.body) return
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() ?? ''
+          const newLines = lines.filter(l => l.trim())
+          if (newLines.length > 0) {
+            setLogLines(prev => {
+              const next = [...prev, ...newLines]
+              setTimeout(() => logsEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
+              return next
+            })
+          }
         }
-        addEvent(`로그 응답: ${data.lines?.length ?? 0}줄`, 'info')
-        if (data.lines?.length > 0) {
-          setLogLines(data.lines)
-          setTimeout(() => logsEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
-        }
-      } catch (e) {
-        addEvent(`로그 fetch 실패: ${String(e)}`, 'error')
-      }
+      } catch { /* aborted or error */ }
     }
 
-    fetchLogs()
-    logPollRef.current = setInterval(fetchLogs, 5000)
+    run()
   }
 
   useEffect(() => {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current)
-      if (logPollRef.current) clearInterval(logPollRef.current)
+      stopLogStream()
     }
   }, [])
 
@@ -581,54 +662,58 @@ const [params, setParams] = useState<Record<string, string>>({
         </Card>
       </div>
 
-      {/* 실행 이력 */}
-      {runs.length > 0 && (
+      {/* 크론 스케줄 */}
+      {cronItems.length > 0 && (
         <Card>
           <CardHeader className="border-b">
-            <CardTitle className="text-base">실행 이력</CardTitle>
+            <CardTitle className="text-base">수집 스케줄</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Run ID</TableHead>
+                  <TableHead>이름</TableHead>
+                  <TableHead>스케줄</TableHead>
+                  <TableHead>다음 실행</TableHead>
+                  <TableHead>마지막 실행</TableHead>
+                  <TableHead className="text-right">성공</TableHead>
+                  <TableHead className="text-right">실패</TableHead>
                   <TableHead>상태</TableHead>
-                  <TableHead className="text-right">게시글</TableHead>
-                  <TableHead className="text-right">데이터</TableHead>
-                  <TableHead>완료 시각</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {runs.slice((runsPage - 1) * RUNS_PAGE_SIZE, runsPage * RUNS_PAGE_SIZE).map(run => (
-                  <TableRow key={run.key}>
-                    <TableCell className="font-mono text-xs">{run.run_id ?? run.key}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className={run.status === 'done' ? 'border-green-500 text-green-500 text-xs' : 'text-xs'}>
-                        {run.status ?? '—'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right text-xs">{run.total_new?.toLocaleString() ?? '—'}</TableCell>
-                    <TableCell className="text-right text-xs">{run.curated_new?.toLocaleString() ?? '—'}</TableCell>
-                    <TableCell className="text-muted-foreground text-xs">{formatDate(run.finished_at)}</TableCell>
-                  </TableRow>
-                ))}
+                {cronItems.map((item) => {
+                  const tz = (item.timezone as string) ?? 'UTC'
+                  const schedule = (item.schedules as string[])?.[0] ?? ''
+                  const nextRun = getNextCronRun(schedule, tz)
+                  return (
+                    <TableRow key={item.name as string}>
+                      <TableCell className="font-mono text-xs">{item.name as string}</TableCell>
+                      <TableCell className="text-xs">
+                        <div className="font-medium">{parseCronHuman(schedule)}</div>
+                        <div className="text-muted-foreground">{schedule} ({tz})</div>
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {nextRun ? (
+                          <div>
+                            <div className="font-medium">{formatTimeUntil(nextRun)}</div>
+                            <div className="text-muted-foreground">{formatDate(nextRun.toISOString())}</div>
+                          </div>
+                        ) : '—'}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-xs">{formatDate(item.lastScheduledTime as string)}</TableCell>
+                      <TableCell className="text-right text-xs text-green-600">{item.succeeded as number}</TableCell>
+                      <TableCell className="text-right text-xs text-red-500">{item.failed as number}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={(item.phase as string) === 'Active' ? 'border-green-500 text-green-500 text-xs' : 'text-xs'}>
+                          {item.phase as string}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
               </TableBody>
             </Table>
-            {runs.length > RUNS_PAGE_SIZE && (
-              <div className="flex items-center justify-between border-t px-4 py-2">
-                <span className="text-muted-foreground text-xs">
-                  {(runsPage - 1) * RUNS_PAGE_SIZE + 1}–{Math.min(runsPage * RUNS_PAGE_SIZE, runs.length)} / {runs.length}건
-                </span>
-                <div className="flex gap-1">
-                  <Button variant="outline" size="sm" className="h-7 text-xs" disabled={runsPage === 1} onClick={() => setRunsPage(p => p - 1)}>
-                    <ChevronLeft className="size-3" />
-                  </Button>
-                  <Button variant="outline" size="sm" className="h-7 text-xs" disabled={runsPage >= Math.ceil(runs.length / RUNS_PAGE_SIZE)} onClick={() => setRunsPage(p => p + 1)}>
-                    <ChevronRight className="size-3" />
-                  </Button>
-                </div>
-              </div>
-            )}
           </CardContent>
         </Card>
       )}
@@ -757,6 +842,57 @@ const [params, setParams] = useState<Record<string, string>>({
         </CardContent>
       </Card>
 
+      {/* 실행 이력 */}
+      {runs.length > 0 && (
+        <Card>
+          <CardHeader className="border-b">
+            <CardTitle className="text-base">실행 이력</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Run ID</TableHead>
+                  <TableHead>상태</TableHead>
+                  <TableHead className="text-right">게시글</TableHead>
+                  <TableHead className="text-right">데이터</TableHead>
+                  <TableHead>완료 시각</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {runs.slice((runsPage - 1) * RUNS_PAGE_SIZE, runsPage * RUNS_PAGE_SIZE).map(run => (
+                  <TableRow key={run.key}>
+                    <TableCell className="font-mono text-xs">{run.run_id ?? run.key}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className={run.status === 'done' ? 'border-green-500 text-green-500 text-xs' : 'text-xs'}>
+                        {run.status ?? '—'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right text-xs">{run.total_new?.toLocaleString() ?? '—'}</TableCell>
+                    <TableCell className="text-right text-xs">{run.curated_new?.toLocaleString() ?? '—'}</TableCell>
+                    <TableCell className="text-muted-foreground text-xs">{formatDate(run.finished_at)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            {runs.length > RUNS_PAGE_SIZE && (
+              <div className="flex items-center justify-between border-t px-4 py-2">
+                <span className="text-muted-foreground text-xs">
+                  {(runsPage - 1) * RUNS_PAGE_SIZE + 1}–{Math.min(runsPage * RUNS_PAGE_SIZE, runs.length)} / {runs.length}건
+                </span>
+                <div className="flex gap-1">
+                  <Button variant="outline" size="sm" className="h-7 text-xs" disabled={runsPage === 1} onClick={() => setRunsPage(p => p - 1)}>
+                    <ChevronLeft className="size-3" />
+                  </Button>
+                  <Button variant="outline" size="sm" className="h-7 text-xs" disabled={runsPage >= Math.ceil(runs.length / RUNS_PAGE_SIZE)} onClick={() => setRunsPage(p => p + 1)}>
+                    <ChevronRight className="size-3" />
+                  </Button>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* 수집 데이터 - 테이블/JSON 탭 + 페이징 + 다운로드 */}
       <Card>
