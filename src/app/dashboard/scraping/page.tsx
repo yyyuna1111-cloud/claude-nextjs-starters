@@ -164,6 +164,7 @@ function ParamRow({
   label,
   desc,
   tooltip,
+  type,
   params,
   setParams,
 }: {
@@ -171,6 +172,7 @@ function ParamRow({
   label: string
   desc: string
   tooltip?: string
+  type?: string
   params: Record<string, string>
   setParams: React.Dispatch<React.SetStateAction<Record<string, string>>>
 }) {
@@ -196,6 +198,7 @@ function ParamRow({
       <div className="col-span-3">
         <Input
           className="h-7 text-xs"
+          type={type}
           value={params[paramKey] ?? ''}
           onChange={e => setParams(p => ({ ...p, [paramKey]: e.target.value }))}
           placeholder={desc}
@@ -240,22 +243,32 @@ export default function ScrapingPage() {
 
   // 파라미터 다이얼로그
   const [paramOpen, setParamOpen] = useState(false)
-  const [params, setParams] = useState<Record<string, string>>({
+  const [credOpen, setCredOpen] = useState(false)
+const [params, setParams] = useState<Record<string, string>>({
     AUTO_DETECT: 'false',
     CAFE_URL_INPUT: 'https://cafe.naver.com/aclove',
     KEYWORD: '기장',
     USE_SEARCH: 'true',
     LIMIT_PER_KEYWORD: '2',
     BACKFILL_DAYS: '0',
+    NAVER_ID: '',
+    NAVER_PW: '',
   })
 
   // 데이터 JSON 패널
   const [jsonRow, setJsonRow] = useState<DataRow | null>(null)
 
-  // 데이터 테이블 페이징
+  // 실행 이력 페이징
+  const RUNS_PAGE_SIZE = 6
+  const [runsPage, setRunsPage] = useState(1)
+
+  // 데이터 테이블 필터/정렬/페이징
   const PAGE_SIZE = 10
   const [dataPage, setDataPage] = useState(1)
   const [dataTotal, setDataTotal] = useState(0)
+  const [dataSortDesc, setDataSortDesc] = useState(true)
+  const [dataDateFrom, setDataDateFrom] = useState('')
+  const [dataDateTo, setDataDateTo] = useState('')
 
   // 트리거 라이브 패널
   const [liveOpen, setLiveOpen] = useState(false)
@@ -480,8 +493,22 @@ export default function ScrapingPage() {
         ...Object.keys(dataRows[0]).filter(c => !PRIORITY_COLS.includes(c)),
       ]
     : []
-  const totalPages = Math.ceil(dataRows.length / PAGE_SIZE)
-  const pagedRows = dataRows.slice((dataPage - 1) * PAGE_SIZE, dataPage * PAGE_SIZE)
+  const filteredRows = dataRows
+    .filter(row => {
+      const val = row.curated_at as string | undefined
+      if (!val) return true
+      const d = val.slice(0, 10)
+      if (dataDateFrom && d < dataDateFrom) return false
+      if (dataDateTo && d > dataDateTo) return false
+      return true
+    })
+    .sort((a, b) => {
+      const av = (a.curated_at as string) ?? ''
+      const bv = (b.curated_at as string) ?? ''
+      return dataSortDesc ? bv.localeCompare(av) : av.localeCompare(bv)
+    })
+  const totalPages = Math.ceil(filteredRows.length / PAGE_SIZE)
+  const pagedRows = filteredRows.slice((dataPage - 1) * PAGE_SIZE, dataPage * PAGE_SIZE)
 
   // ── DAG steps (확장된 워크플로우) ─────────────────────────────────────────
   const dagSteps =
@@ -572,7 +599,7 @@ export default function ScrapingPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {runs.map(run => (
+                {runs.slice((runsPage - 1) * RUNS_PAGE_SIZE, runsPage * RUNS_PAGE_SIZE).map(run => (
                   <TableRow key={run.key}>
                     <TableCell className="font-mono text-xs">{run.run_id ?? run.key}</TableCell>
                     <TableCell>
@@ -587,6 +614,21 @@ export default function ScrapingPage() {
                 ))}
               </TableBody>
             </Table>
+            {runs.length > RUNS_PAGE_SIZE && (
+              <div className="flex items-center justify-between border-t px-4 py-2">
+                <span className="text-muted-foreground text-xs">
+                  {(runsPage - 1) * RUNS_PAGE_SIZE + 1}–{Math.min(runsPage * RUNS_PAGE_SIZE, runs.length)} / {runs.length}건
+                </span>
+                <div className="flex gap-1">
+                  <Button variant="outline" size="sm" className="h-7 text-xs" disabled={runsPage === 1} onClick={() => setRunsPage(p => p - 1)}>
+                    <ChevronLeft className="size-3" />
+                  </Button>
+                  <Button variant="outline" size="sm" className="h-7 text-xs" disabled={runsPage >= Math.ceil(runs.length / RUNS_PAGE_SIZE)} onClick={() => setRunsPage(p => p + 1)}>
+                    <ChevronRight className="size-3" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -787,6 +829,37 @@ export default function ScrapingPage() {
                 </TabsList>
               </div>
 
+              {/* 필터 바 */}
+              <div className="flex items-center gap-2 border-b px-4 py-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => { setDataSortDesc(v => !v); setDataPage(1) }}
+                >
+                  {dataSortDesc ? '최신순' : '오래된순'}
+                </Button>
+                <input
+                  type="date"
+                  className="h-7 rounded-md border px-2 text-xs"
+                  value={dataDateFrom}
+                  onChange={e => { setDataDateFrom(e.target.value); setDataPage(1) }}
+                />
+                <span className="text-xs text-muted-foreground">~</span>
+                <input
+                  type="date"
+                  className="h-7 rounded-md border px-2 text-xs"
+                  value={dataDateTo}
+                  onChange={e => { setDataDateTo(e.target.value); setDataPage(1) }}
+                />
+                {(dataDateFrom || dataDateTo) && (
+                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => { setDataDateFrom(''); setDataDateTo(''); setDataPage(1) }}>
+                    초기화
+                  </Button>
+                )}
+                <span className="ml-auto text-xs text-muted-foreground">{filteredRows.length.toLocaleString()}건</span>
+              </div>
+
               {/* 테이블 뷰 */}
               <TabsContent value="table" className="mt-0">
                 <div className="overflow-x-auto">
@@ -826,7 +899,7 @@ export default function ScrapingPage() {
                 {totalPages > 1 && (
                   <div className="flex items-center justify-between border-t px-4 py-3">
                     <span className="text-muted-foreground text-xs">
-                      {(dataPage - 1) * PAGE_SIZE + 1}–{Math.min(dataPage * PAGE_SIZE, dataRows.length)} / {dataRows.length}건
+                      {(dataPage - 1) * PAGE_SIZE + 1}–{Math.min(dataPage * PAGE_SIZE, filteredRows.length)} / {filteredRows.length}건
                     </span>
                     <div className="flex items-center gap-1">
                       <Button
@@ -877,7 +950,7 @@ export default function ScrapingPage() {
               {/* JSON 전체 뷰 */}
               <TabsContent value="json" className="mt-0 p-4">
                 <pre className="bg-muted max-h-[500px] overflow-auto rounded-lg p-4 text-xs">
-                  {JSON.stringify(dataRows, null, 2)}
+                  {JSON.stringify(filteredRows, null, 2)}
                 </pre>
               </TabsContent>
             </Tabs>
@@ -906,6 +979,24 @@ export default function ScrapingPage() {
             </div>
             <ParamRow paramKey="BACKFILL_DAYS" label="첫 실행 수집 기간 (일)" desc="0=전체, 7=최근 7일" params={params} setParams={setParams}
               tooltip="처음 실행 시 과거 몇 일치를 수집할지 설정&#10;0이면 전체, 7이면 최근 7일치만" />
+
+            {/* 로그인 정보 드롭다운 */}
+            <div className="border-t pt-2">
+              <button
+                type="button"
+                className="flex w-full items-center gap-1 text-sm text-foreground/70 hover:text-foreground transition-colors"
+                onClick={() => setCredOpen(v => !v)}
+              >
+                {credOpen ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+                네이버 계정 입력 (선택)
+              </button>
+              {credOpen && (
+                <div className="mt-2 space-y-2">
+                  <ParamRow paramKey="NAVER_ID" label="아이디" desc="미입력 시 기본값" params={params} setParams={setParams} />
+                  <ParamRow paramKey="NAVER_PW" label="비밀번호" desc="미입력 시 기본값" type="password" params={params} setParams={setParams} />
+                </div>
+              )}
+            </div>
           </div>
           </TooltipProvider>
           <DialogFooter>
