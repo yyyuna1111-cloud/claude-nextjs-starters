@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
   try {
     const cmd = new GetObjectCommand({
       Bucket: BUCKET,
-      Key: 'output/tax_data.jsonl',
+      Key: 'output/tax1_data.jsonl',
     })
 
     const res = await s3.send(cmd)

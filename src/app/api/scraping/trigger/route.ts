@@ -23,7 +23,7 @@ export async function POST(req: Request) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       resourceKind: 'WorkflowTemplate',
-      resourceName: 'tax-pipeline',
+      resourceName: 'tax-pipeline-secret',
       submitOptions: {
         parameters: Object.entries(params).map(([k, v]) => `${k}=${v}`),
       },
