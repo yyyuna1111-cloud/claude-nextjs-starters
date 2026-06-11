@@ -25,6 +25,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
@@ -165,91 +166,9 @@ function ManifestModal({
   )
 }
 
-// ─── Docker 설정 가이드 다이얼로그 ───────────────────────────────────────────
+// ─── 이미지 등록 다이얼로그 (tar 업로드 + Docker Push 가이드 통합) ────────────
 
-function DockerGuideDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const REGISTRY_HOST = process.env.NEXT_PUBLIC_REGISTRY_HOST ?? '10.70.170.227'
-
-  return (
-    <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <BookOpen className="size-4" />
-            Docker Push 설정 가이드
-          </DialogTitle>
-        </DialogHeader>
-        <div className="space-y-5 pt-2">
-          <p className="text-sm text-muted-foreground">
-            Private registry에 <code className="text-xs bg-muted px-1 py-0.5 rounded">{REGISTRY_HOST}</code>는 HTTP를 사용하므로
-            Docker에 insecure registry로 등록해야 <code className="text-xs bg-muted px-1 py-0.5 rounded">docker push</code>가 가능합니다.
-          </p>
-
-          {/* Docker Desktop */}
-          <div className="space-y-2">
-            <h3 className="text-sm font-semibold">1. Docker Desktop (Mac / Windows)</h3>
-            <p className="text-xs text-muted-foreground">
-              Docker Desktop → Settings → <strong>Docker Engine</strong> 탭에서 아래 JSON을 입력 후 <strong>Apply &amp; restart</strong>
-            </p>
-            <pre className="text-xs bg-muted rounded-md px-4 py-3 font-mono">{`{
-  "insecure-registries": [
-    "${REGISTRY_HOST}:80"
-  ]
-}`}</pre>
-            <div className="rounded-md overflow-hidden border">
-              <Image
-                src="/docker-insecure-registry-guide.png"
-                alt="Docker Desktop 설정 화면"
-                width={800}
-                height={420}
-                className="w-full"
-              />
-            </div>
-          </div>
-
-          {/* Linux */}
-          <div className="space-y-2">
-            <h3 className="text-sm font-semibold">2. Linux (Docker Engine)</h3>
-            <p className="text-xs text-muted-foreground">
-              <code className="text-xs bg-muted px-1 py-0.5 rounded">/etc/docker/daemon.json</code> 파일에 동일하게 추가 후 재시작
-            </p>
-            <pre className="text-xs bg-muted rounded-md px-4 py-3 font-mono">{`sudo vi /etc/docker/daemon.json
-# 아래 내용 추가
-{
-  "insecure-registries": [
-    "${REGISTRY_HOST}:80"
-  ]
-}
-
-sudo systemctl restart docker`}</pre>
-          </div>
-
-          {/* Push 명령어 */}
-          <div className="space-y-2">
-            <h3 className="text-sm font-semibold">3. 이미지 Push</h3>
-            <pre className="text-xs bg-muted rounded-md px-4 py-3 font-mono">{`# 로컬 이미지에 태그 지정
-docker tag <이미지명>:<태그> ${REGISTRY_HOST}:80/<경로>:<태그>
-
-# Push
-docker push ${REGISTRY_HOST}:80/<경로>:<태그>
-
-# 예시 (Jupyter용)
-docker tag my-pytorch:latest ${REGISTRY_HOST}:80/jupyter/pytorch:latest
-docker push ${REGISTRY_HOST}:80/jupyter/pytorch:latest`}</pre>
-          </div>
-
-          <div className="flex justify-end pt-1">
-            <Button size="sm" variant="outline" onClick={onClose}>닫기</Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-// ─── 업로드 다이얼로그 ────────────────────────────────────────────────────────
-
-function UploadDialog({ open, onClose, onSuccess }: { open: boolean; onClose: () => void; onSuccess: () => void }) {
+function ImageRegisterDialog({ open, onClose, onSuccess }: { open: boolean; onClose: () => void; onSuccess: () => void }) {
   const fileRef = useRef<HTMLInputElement>(null)
   const [file, setFile] = useState<File | null>(null)
   const [name, setName] = useState('')
@@ -299,89 +218,124 @@ function UploadDialog({ open, onClose, onSuccess }: { open: boolean; onClose: ()
 
   return (
     <Dialog open={open} onOpenChange={v => !v && handleClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>이미지 업로드</DialogTitle>
+          <DialogTitle>이미지 등록</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4 pt-2">
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">이미지 파일 (.tar)</label>
-            <div
-              className="flex items-center gap-2 rounded-md border border-dashed px-3 py-3 cursor-pointer hover:bg-muted/40 transition-colors"
-              onClick={() => fileRef.current?.click()}
-            >
-              <Upload className="size-4 text-muted-foreground shrink-0" />
-              <span className="text-sm text-muted-foreground truncate">
-                {file ? file.name : '파일 선택...'}
-              </span>
-              {file && (
-                <span className="ml-auto text-xs text-muted-foreground shrink-0">
-                  {(file.size / 1024 / 1024).toFixed(0)} MB
+        <Tabs defaultValue="tar" className="pt-1">
+          <TabsList className="w-full">
+            <TabsTrigger value="tar" className="flex-1">tar 파일 업로드</TabsTrigger>
+            <TabsTrigger value="push" className="flex-1">Docker Push</TabsTrigger>
+          </TabsList>
+
+          {/* ── tar 업로드 탭 ── */}
+          <TabsContent value="tar" className="space-y-4 pt-4">
+            <p className="text-xs text-muted-foreground">
+              로컬에서 <code className="bg-muted px-1 py-0.5 rounded">docker save</code>로 저장한 .tar 파일을 업로드하면 서버가 registry에 자동으로 push합니다.
+            </p>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">이미지 파일 (.tar)</label>
+              <div
+                className="flex items-center gap-2 rounded-md border border-dashed px-3 py-3 cursor-pointer hover:bg-muted/40 transition-colors"
+                onClick={() => fileRef.current?.click()}
+              >
+                <Upload className="size-4 text-muted-foreground shrink-0" />
+                <span className="text-sm text-muted-foreground truncate">
+                  {file ? file.name : '파일 선택...'}
                 </span>
-              )}
+                {file && (
+                  <span className="ml-auto text-xs text-muted-foreground shrink-0">
+                    {(file.size / 1024 / 1024).toFixed(0)} MB
+                  </span>
+                )}
+              </div>
+              <input ref={fileRef} type="file" accept=".tar" className="hidden"
+                onChange={e => setFile(e.target.files?.[0] ?? null)} />
+              <p className="text-xs text-muted-foreground">
+                <code className="text-xs">docker save image:tag -o image.tar</code> 으로 생성한 파일
+              </p>
             </div>
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".tar"
-              className="hidden"
-              onChange={e => setFile(e.target.files?.[0] ?? null)}
-            />
-            <p className="text-xs text-muted-foreground">
-              <code className="text-xs">docker save image:tag -o image.tar</code> 로 생성한 파일
+            <div className="grid grid-cols-3 gap-3">
+              <div className="col-span-2 space-y-1.5">
+                <label className="text-sm font-medium">레지스트리 경로</label>
+                <Input placeholder="예: jupyter/pytorch, myteam/base"
+                  value={name} onChange={e => setName(e.target.value)}
+                  className="h-9 font-mono text-sm" />
+                <p className="text-xs text-muted-foreground">Jupyter용은 <code className="text-xs">jupyter/</code> 접두사 권장</p>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">태그</label>
+                <Input placeholder="latest" value={tag} onChange={e => setTag(e.target.value)}
+                  className="h-9 font-mono text-sm" />
+              </div>
+            </div>
+            {error && (
+              <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                <AlertCircle className="size-3.5 mt-0.5 shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
+            {uploading && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" />
+                <span>업로드 중... 이미지 크기에 따라 수 분 소요될 수 있습니다</span>
+              </div>
+            )}
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="outline" size="sm" onClick={handleClose} disabled={uploading}>취소</Button>
+              <Button size="sm" onClick={handleUpload} disabled={!file || !name.trim() || uploading}>
+                {uploading
+                  ? <><Loader2 className="size-3.5 animate-spin mr-1.5" />업로드 중</>
+                  : <><Upload className="size-3.5 mr-1.5" />업로드</>}
+              </Button>
+            </div>
+          </TabsContent>
+
+          {/* ── Docker Push 탭 ── */}
+          <TabsContent value="push" className="space-y-5 pt-4">
+            <p className="text-sm text-muted-foreground">
+              Private registry <code className="text-xs bg-muted px-1 py-0.5 rounded">{REGISTRY_HOST}</code>는 HTTP를 사용하므로
+              Docker에 insecure registry로 등록해야 <code className="text-xs bg-muted px-1 py-0.5 rounded">docker push</code>가 가능합니다.
             </p>
-          </div>
 
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">레지스트리 경로</label>
-            <Input
-              placeholder="예: jupyter/pytorch, myteam/base"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              className="h-9 font-mono text-sm"
-            />
-            <p className="text-xs text-muted-foreground">
-              Jupyter 노트북용은 <code className="text-xs">jupyter/</code> 접두사 권장
-            </p>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">태그</label>
-            <Input
-              placeholder="latest"
-              value={tag}
-              onChange={e => setTag(e.target.value)}
-              className="h-9 font-mono text-sm"
-            />
-          </div>
-
-          {error && (
-            <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-              <AlertCircle className="size-3.5 mt-0.5 shrink-0" />
-              <span>{error}</span>
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold">1. Docker Desktop (Mac / Windows)</h3>
+              <p className="text-xs text-muted-foreground">
+                Docker Desktop → Settings → <strong>Docker Engine</strong> 탭에서 아래 JSON 입력 후 <strong>Apply &amp; restart</strong>
+              </p>
+              <pre className="text-xs bg-muted rounded-md px-4 py-3 font-mono">{`{
+  "insecure-registries": ["${REGISTRY_HOST}:80"]
+}`}</pre>
+              <div className="rounded-md overflow-hidden border">
+                <Image src="/docker-insecure-registry-guide.png" alt="Docker Desktop 설정 화면"
+                  width={900} height={470} className="w-full" />
+              </div>
             </div>
-          )}
 
-          {uploading && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" />
-              <span>업로드 중... 이미지 크기에 따라 수 분 소요될 수 있습니다</span>
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold">2. Linux (Docker Engine)</h3>
+              <pre className="text-xs bg-muted rounded-md px-4 py-3 font-mono">{`sudo vi /etc/docker/daemon.json
+# 아래 내용 추가
+{ "insecure-registries": ["${REGISTRY_HOST}:80"] }
+
+sudo systemctl restart docker`}</pre>
             </div>
-          )}
 
-          <div className="flex justify-end gap-2 pt-1">
-            <Button variant="outline" size="sm" onClick={handleClose} disabled={uploading}>취소</Button>
-            <Button
-              size="sm"
-              onClick={handleUpload}
-              disabled={!file || !name.trim() || uploading}
-            >
-              {uploading
-                ? <><Loader2 className="size-3.5 animate-spin mr-1.5" />업로드 중</>
-                : <><Upload className="size-3.5 mr-1.5" />업로드</>}
-            </Button>
-          </div>
-        </div>
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold">3. Push 명령어</h3>
+              <pre className="text-xs bg-muted rounded-md px-4 py-3 font-mono">{`docker tag <이미지>:<태그> ${REGISTRY_HOST}:80/<경로>:<태그>
+docker push ${REGISTRY_HOST}:80/<경로>:<태그>
+
+# Jupyter용 예시
+docker tag my-pytorch:latest ${REGISTRY_HOST}:80/jupyter/pytorch:latest
+docker push ${REGISTRY_HOST}:80/jupyter/pytorch:latest`}</pre>
+            </div>
+
+            <div className="flex justify-end pt-1">
+              <Button size="sm" variant="outline" onClick={handleClose}>닫기</Button>
+            </div>
+          </TabsContent>
+        </Tabs>
       </DialogContent>
     </Dialog>
   )
@@ -403,7 +357,6 @@ export default function RegistryPage() {
 
   const [error, setError] = useState<string | null>(null)
   const [uploadOpen, setUploadOpen] = useState(false)
-  const [guideOpen, setGuideOpen] = useState(false)
 
   // 레포 목록 조회
   const fetchRepos = useCallback(async () => {
@@ -491,17 +444,13 @@ export default function RegistryPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={() => setGuideOpen(true)} className="h-8 gap-1.5 text-xs">
-            <BookOpen className="size-3" />
-            Push 가이드
-          </Button>
           <Button variant="outline" size="sm" onClick={fetchRepos} className="h-8 gap-1.5 text-xs">
             <RefreshCw className="size-3" />
             새로고침
           </Button>
           <Button size="sm" onClick={() => setUploadOpen(true)} className="h-8 gap-1.5 text-xs">
             <Upload className="size-3" />
-            이미지 업로드
+            이미지 등록
           </Button>
         </div>
       </div>
@@ -673,9 +622,7 @@ export default function RegistryPage() {
         </Card>
       </div>
 
-      <DockerGuideDialog open={guideOpen} onClose={() => setGuideOpen(false)} />
-
-      <UploadDialog
+      <ImageRegisterDialog
         open={uploadOpen}
         onClose={() => setUploadOpen(false)}
         onSuccess={fetchRepos}
