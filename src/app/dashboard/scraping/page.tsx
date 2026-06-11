@@ -489,7 +489,7 @@ const [params, setParams] = useState<Record<string, string>>({
         }
 
         // 파드별 단계 변화 이벤트
-        const nodes = (wf.status?.nodes ?? {}) as Record<string, Record<string, unknown>>
+        const nodes = (wf.status?.nodes ?? {}) as unknown as Record<string, Record<string, unknown>>
         Object.values(nodes).forEach(node => {
           if (node.type !== 'Pod') return
           const nodeId = node.id as string
