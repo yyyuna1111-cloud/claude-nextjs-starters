@@ -23,65 +23,43 @@ export async function GET() {
       process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
     }
 
-    const [deploymentsData, servicesData, isvcData] = await Promise.all([
-      k8sFetch('/apis/apps/v1/deployments?labelSelector=app%3Dvllm').catch(() => ({ items: [] })),
-      k8sFetch('/api/v1/services?labelSelector=app%3Dvllm').catch(() => ({ items: [] })),
-      k8sFetch('/apis/serving.kserve.io/v1beta1/inferenceservices').catch(() => ({ items: [] })),
+    const [isvcData] = await Promise.all([
+      k8sFetch('/apis/serving.kserve.io/v1beta1/inferenceservices?labelSelector=app%3Dvllm').catch(() => ({ items: [] })),
     ])
 
-    const deployments: any[] = deploymentsData.items || []
-    const services: any[] = servicesData.items || []
     const isvcs: any[] = isvcData.items || []
 
-    // Build service map: namespace/name → clusterIP, port
-    const serviceMap = new Map<string, any>()
-    services.forEach((svc: any) => {
-      const key = `${svc.metadata.namespace}/${svc.metadata.name}`
-      serviceMap.set(key, svc)
-    })
+    const result = isvcs.map((isvc: any) => {
+      const name = isvc.metadata.name
+      const namespace = isvc.metadata.namespace
+      const modelLabel = isvc.metadata.labels?.model || name.replace(/^vllm-/, '')
 
-    // Build ISVC map: name → isvc (for connection display)
-    const isvcMap = new Map<string, any>()
-    isvcs.forEach((isvc: any) => {
-      isvcMap.set(isvc.metadata.name, isvc)
-      // Also try matching by model label
-      const model = isvc.metadata.labels?.model
-      if (model) isvcMap.set(model, isvc)
-    })
+      const predictor = isvc.spec?.predictor || {}
+      const replicas = predictor.minReplicas ?? 1
 
-    const result = deployments.map((dep: any) => {
-      const name = dep.metadata.name
-      const namespace = dep.metadata.namespace
-      const modelLabel = dep.metadata.labels?.model || name.replace(/^vllm-/, '')
-      const replicas = dep.spec?.replicas ?? 1
-      const readyReplicas = dep.status?.readyReplicas ?? 0
-      const unavailable = dep.status?.unavailableReplicas ?? 0
+      // KServe status conditions
+      const readyCondition = isvc.status?.conditions?.find((c: any) => c.type === 'Ready')
+      const status = readyCondition?.status === 'True' ? 'Running' 
+                     : (readyCondition?.status === 'Unknown' || !readyCondition) ? 'Pending' 
+                     : 'NotReady'
 
-      const status = readyReplicas > 0 ? 'Running' : unavailable > 0 ? 'Pending' : 'NotReady'
+      const readyReplicas = status === 'Running' ? replicas : 0
 
-      // GPU count from container resources
-      const containers = dep.spec?.template?.spec?.containers || []
+      // GPU count
+      const containers = predictor.containers || []
       const mainContainer = containers[0] || {}
       const gpuCount = parseInt(
         mainContainer.resources?.limits?.['nvidia.com/gpu'] ?? '0', 10
       )
 
-      // Model args (--model flag)
+      // Model args
       const args: string[] = mainContainer.args || []
       const modelIdx = args.indexOf('--model')
       const modelId = modelIdx >= 0 ? args[modelIdx + 1] : modelLabel
 
-      // Service endpoint
-      const svc = serviceMap.get(`${namespace}/${name}`) || serviceMap.get(`${namespace}/vllm-${modelLabel}`)
-      const port = svc?.spec?.ports?.[0]?.port ?? 8000
-      const clusterIP = svc?.spec?.clusterIP
-      const endpoint = clusterIP ? `http://${clusterIP}:${port}` : null
-
-      // ISVC connection
-      const linkedIsvc = isvcMap.get(name) || isvcMap.get(modelLabel) || isvcMap.get(`vllm-${modelLabel}`)
-      const isvcName = linkedIsvc?.metadata?.name ?? null
-      const isvcNamespace = linkedIsvc?.metadata?.namespace ?? null
-      const isvcUrl = linkedIsvc?.status?.url ?? null
+      // URL
+      const isvcUrl = isvc.status?.url || null
+      const endpoint = isvcUrl
 
       return {
         name,
@@ -92,10 +70,10 @@ export async function GET() {
         readyReplicas,
         gpuCount,
         endpoint,
-        isvcName,
-        isvcNamespace,
+        isvcName: name,
+        isvcNamespace: namespace,
         isvcUrl,
-        createdAt: dep.metadata.creationTimestamp,
+        createdAt: isvc.metadata.creationTimestamp,
       }
     })
 
