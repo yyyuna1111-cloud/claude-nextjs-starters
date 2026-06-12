@@ -5,7 +5,7 @@ import * as React from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
-import { LayoutDashboard, GitBranch, Server, ShieldCheck, ChevronDown, Network, Sun, Moon, Database, HardDrive, Package, BookOpen, LogOut } from 'lucide-react'
+import { LayoutDashboard, GitBranch, Server, ShieldCheck, ChevronDown, Network, Sun, Moon, Database, HardDrive, Package, BookOpen, LogOut, Bot } from 'lucide-react'
 import { useTheme } from 'next-themes'
 
 import { cn } from '@/lib/utils'
@@ -14,6 +14,7 @@ import { useCurrentUser } from '@/hooks/use-current-user'
 const adminNavItems = [
   { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
   { href: '/dashboard/serving', label: 'Service Operation', icon: Server },
+  { href: '/dashboard/llm', label: 'Private LLM', icon: Bot },
   { href: '/dashboard/deployments', label: 'Deployment Timelines', icon: GitBranch },
   { href: '/dashboard/evaluation', label: '퀄리티 게이트', icon: ShieldCheck },
   { href: '/dashboard/scraping', label: 'Data Scraping', icon: Database },
@@ -24,6 +25,7 @@ const adminNavItems = [
 ]
 
 const userNavItems = [
+  { href: '/dashboard/llm', label: 'Private LLM', icon: Bot },
   { href: '/dashboard/storage', label: 'Storage', icon: HardDrive },
   { href: '/dashboard/jupyter', label: 'Jupyter', icon: BookOpen },
   { href: '/dashboard/registry', label: 'Registry', icon: Package },
