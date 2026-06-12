@@ -17,6 +17,8 @@ import {
   Layers,
   Link2,
   AlertTriangle,
+  Folder,
+  CornerUpLeft,
 } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
@@ -126,6 +128,30 @@ export default function LLMPage() {
 
   const [deleteTarget, setDeleteTarget] = useState<LLMDeployment | null>(null)
   const [deleting, setDeleting] = useState(false)
+
+  const [isPathSelectorOpen, setIsPathSelectorOpen] = useState(false)
+  const [pathPrefix, setPathPrefix] = useState('')
+  const [pathFolders, setPathFolders] = useState<any[]>([])
+  const [loadingPath, setLoadingPath] = useState(false)
+
+  const fetchFolders = async (prefix: string) => {
+    setLoadingPath(true)
+    try {
+      const res = await fetch(`/api/storage/browse?bucket=shared-sllm&prefix=${encodeURIComponent(prefix)}`)
+      const data = await res.json()
+      setPathFolders(data.folders || [])
+    } catch {
+      setPathFolders([])
+    } finally {
+      setLoadingPath(false)
+    }
+  }
+
+  useEffect(() => {
+    if (isPathSelectorOpen) {
+      fetchFolders(pathPrefix)
+    }
+  }, [isPathSelectorOpen, pathPrefix])
 
   const fetchDeployments = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
@@ -423,12 +449,22 @@ export default function LLMPage() {
 
               <div className="space-y-1.5">
                 <Label htmlFor="modelId">모델 ID <span className="text-destructive">*</span></Label>
-                <Input
-                  id="modelId"
-                  placeholder="meta-llama/Meta-Llama-3-8B-Instruct"
-                  value={form.modelId}
-                  onChange={e => setForm(f => ({ ...f, modelId: e.target.value }))}
-                />
+                <div className="flex gap-2">
+                  <Input
+                    id="modelId"
+                    placeholder="meta-llama/Meta-Llama-3-8B-Instruct"
+                    value={form.modelId}
+                    onChange={e => setForm(f => ({ ...f, modelId: e.target.value }))}
+                    className="flex-1"
+                  />
+                  <Button variant="outline" type="button" onClick={() => {
+                    setPathPrefix('')
+                    setIsPathSelectorOpen(true)
+                  }}>
+                    <Folder className="size-4 mr-2" />
+                    경로 찾기
+                  </Button>
+                </div>
                 <p className="text-xs text-muted-foreground">HuggingFace 모델 ID 또는 로컬 경로 (PVC 마운트 시)</p>
               </div>
 
@@ -520,6 +556,64 @@ export default function LLMPage() {
             <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
               {deleting ? <RefreshCw className="size-4 mr-2 animate-spin" /> : <Trash2 className="size-4 mr-2" />}
               삭제
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 경로 선택 다이얼로그 */}
+      <Dialog open={isPathSelectorOpen} onOpenChange={setIsPathSelectorOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>로컬 모델 경로 선택</DialogTitle>
+            <DialogDescription>
+              shared-sllm 스토리지에 저장된 모델 폴더를 선택하세요.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="border rounded-md overflow-hidden flex flex-col h-[300px]">
+            <div className="bg-muted p-2 flex items-center gap-2 text-sm font-mono border-b">
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="size-6 h-6 w-6" 
+                disabled={!pathPrefix}
+                onClick={() => {
+                  const parts = pathPrefix.split('/').filter(Boolean)
+                  parts.pop()
+                  setPathPrefix(parts.length ? parts.join('/') + '/' : '')
+                }}
+              >
+                <CornerUpLeft className="size-4" />
+              </Button>
+              <span className="truncate">/mnt/models/{pathPrefix}</span>
+            </div>
+            <div className="flex-1 overflow-auto p-2 space-y-1">
+              {loadingPath ? (
+                <div className="p-4 text-center text-sm text-muted-foreground">불러오는 중...</div>
+              ) : pathFolders.length === 0 ? (
+                <div className="p-4 text-center text-sm text-muted-foreground">하위 폴더가 없습니다.</div>
+              ) : (
+                pathFolders.map(f => (
+                  <Button 
+                    key={f.prefix} 
+                    variant="ghost" 
+                    className="w-full justify-start text-sm h-8 px-2"
+                    onClick={() => setPathPrefix(f.prefix)}
+                  >
+                    <Folder className="size-4 mr-2 text-blue-500" />
+                    {f.name}
+                  </Button>
+                ))
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsPathSelectorOpen(false)}>취소</Button>
+            <Button onClick={() => {
+              setForm(f => ({ ...f, modelId: `/mnt/models/${pathPrefix.replace(/\/$/, '')}` }))
+              setIsPathSelectorOpen(false)
+            }}>
+              이 폴더 선택
             </Button>
           </DialogFooter>
         </DialogContent>

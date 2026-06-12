@@ -34,101 +34,86 @@ export async function POST(req: NextRequest) {
     }
 
     const tpSize = tensorParallelSize ?? gpuCount
-    const deploymentName = name.startsWith('vllm-') ? name : `vllm-${name}`
+    const isvcName = name.startsWith('vllm-') ? name : `vllm-${name}`
 
     const args = [
       '--model', modelId,
       '--host', '0.0.0.0',
-      '--port', '8000',
+      '--port', '8080',
       '--tensor-parallel-size', String(tpSize),
       '--dtype', dtype,
     ]
     if (maxModelLen) args.push('--max-model-len', String(maxModelLen))
 
-    const deployment = {
-      apiVersion: 'apps/v1',
-      kind: 'Deployment',
+    const isvc = {
+      apiVersion: 'serving.kserve.io/v1beta1',
+      kind: 'InferenceService',
       metadata: {
-        name: deploymentName,
+        name: isvcName,
         namespace,
         labels: { app: 'vllm', model: name },
+        annotations: {
+          'prometheus.io/path': '/metrics',
+          'prometheus.io/port': '8080',
+          'prometheus.io/scheme': 'http',
+          'prometheus.io/scrape': 'true',
+          'serving.kserve.io/deploymentMode': 'Standard',
+          'serving.kserve.io/enable-prometheus-scraping': 'true',
+        },
       },
       spec: {
-        replicas,
-        selector: { matchLabels: { app: 'vllm', model: name } },
-        template: {
-          metadata: { labels: { app: 'vllm', model: name } },
-          spec: {
-            containers: [{
-              name: 'vllm',
-              image,
-              args,
-              ports: [{ containerPort: 8000 }],
-              resources: {
-                limits: { 'nvidia.com/gpu': String(gpuCount) },
-                requests: { 'nvidia.com/gpu': String(gpuCount) },
-              },
-              env: [
-                { name: 'HF_HOME', value: '/root/.cache/huggingface' },
-                { name: 'VLLM_WORKER_MULTIPROC_METHOD', value: 'spawn' },
-              ],
-              volumeMounts: [{ name: 'model-cache', mountPath: '/root/.cache/huggingface' }],
-              readinessProbe: {
-                httpGet: { path: '/health', port: 8000 },
-                initialDelaySeconds: 60,
-                periodSeconds: 10,
-                failureThreshold: 30,
-              },
-            }],
-            volumes: [{ name: 'model-cache', emptyDir: {} }],
-            tolerations: [{ key: 'nvidia.com/gpu', operator: 'Exists', effect: 'NoSchedule' }],
+        predictor: {
+          annotations: {
+            'sidecar.istio.io/inject': 'true',
           },
+          minReplicas: replicas,
+          maxReplicas: replicas,
+          tolerations: [{ key: 'nvidia.com/gpu', operator: 'Exists', effect: 'NoSchedule' }],
+          volumes: [
+            { name: 'model-storage', persistentVolumeClaim: { claimName: 'shared-sllm' } },
+            { name: 'model-cache', emptyDir: {} },
+          ],
+          containers: [{
+            name: 'kserve-container',
+            image,
+            args,
+            env: [
+              { name: 'HF_HOME', value: '/root/.cache/huggingface' },
+              { name: 'VLLM_WORKER_MULTIPROC_METHOD', value: 'spawn' },
+            ],
+            ports: [{ containerPort: 8080, protocol: 'TCP' }],
+            resources: {
+              requests: { 'nvidia.com/gpu': String(gpuCount) },
+              limits: { 'nvidia.com/gpu': String(gpuCount) },
+            },
+            volumeMounts: [
+              { mountPath: '/mnt/models', name: 'model-storage' },
+              { mountPath: '/root/.cache/huggingface', name: 'model-cache' },
+            ],
+            readinessProbe: {
+              httpGet: { path: '/health', port: 8080 },
+              initialDelaySeconds: 60,
+              periodSeconds: 10,
+              failureThreshold: 30,
+            },
+          }],
         },
       },
     }
 
-    const service = {
-      apiVersion: 'v1',
-      kind: 'Service',
-      metadata: {
-        name: deploymentName,
-        namespace,
-        labels: { app: 'vllm', model: name },
-      },
-      spec: {
-        selector: { app: 'vllm', model: name },
-        ports: [{ name: 'http', port: 8000, targetPort: 8000 }],
-        type: 'ClusterIP',
-      },
+    const res = await fetch(`${K8S_API_URL}/apis/serving.kserve.io/v1beta1/namespaces/${namespace}/inferenceservices`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify(isvc),
+      next: { revalidate: 0 },
+    })
+
+    if (!res.ok) {
+      const err = await res.json()
+      return NextResponse.json({ error: `InferenceService 생성 실패: ${err.message ?? res.status}` }, { status: res.status })
     }
 
-    const [depRes, svcRes] = await Promise.all([
-      fetch(`${K8S_API_URL}/apis/apps/v1/namespaces/${namespace}/deployments`, {
-        method: 'POST',
-        headers: authHeaders,
-        body: JSON.stringify(deployment),
-        next: { revalidate: 0 },
-      }),
-      fetch(`${K8S_API_URL}/api/v1/namespaces/${namespace}/services`, {
-        method: 'POST',
-        headers: authHeaders,
-        body: JSON.stringify(service),
-        next: { revalidate: 0 },
-      }),
-    ])
-
-    if (!depRes.ok) {
-      const err = await depRes.json()
-      return NextResponse.json({ error: `Deployment 생성 실패: ${err.message ?? depRes.status}` }, { status: depRes.status })
-    }
-
-    if (!svcRes.ok) {
-      const err = await svcRes.json()
-      // Deployment was created — note service failure but don't fail entirely
-      console.warn('[LLM Deploy] Service 생성 실패:', err.message)
-    }
-
-    return NextResponse.json({ success: true, deploymentName, namespace })
+    return NextResponse.json({ success: true, deploymentName: isvcName, namespace })
   } catch (error: any) {
     console.error('[LLM Deploy API]', error.message)
     return NextResponse.json({ error: error.message }, { status: 500 })
