@@ -96,7 +96,7 @@ const DEFAULT_FORM: DeployForm = {
   tensorParallelSize: '',
   maxModelLen: '',
   dtype: 'auto',
-  image: 'vllm/vllm-openai:latest',
+  image: '10.70.170.227:80/model-serving/vllm-openai:v0.19.1',
   replicas: '1',
   cpu: '8',
   memory: '64',
