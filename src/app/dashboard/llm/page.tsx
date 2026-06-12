@@ -83,11 +83,14 @@ interface DeployForm {
   dtype: string
   image: string
   replicas: string
+  cpu: string
+  memory: string
+  pvcName: string
 }
 
 const DEFAULT_FORM: DeployForm = {
   name: '',
-  namespace: 'default',
+  namespace: 'datascience-storage',
   modelId: '',
   gpuCount: '1',
   tensorParallelSize: '',
@@ -95,6 +98,9 @@ const DEFAULT_FORM: DeployForm = {
   dtype: 'auto',
   image: 'vllm/vllm-openai:latest',
   replicas: '1',
+  cpu: '8',
+  memory: '64',
+  pvcName: 'shared-sllm',
 }
 
 function StatusBadge({ status }: { status: LLMDeployment['status'] }) {
@@ -197,6 +203,9 @@ export default function LLMPage() {
           dtype: form.dtype,
           image: form.image,
           replicas: parseInt(form.replicas),
+          cpu: parseInt(form.cpu) || 8,
+          memory: parseInt(form.memory) || 64,
+          pvcName: form.pvcName || 'shared-sllm',
         }),
       })
       const data = await res.json()
@@ -426,23 +435,33 @@ export default function LLMPage() {
                 </div>
               )}
 
+              <div className="space-y-1.5">
+                <Label htmlFor="name">배포 이름 <span className="text-destructive">*</span></Label>
+                <Input
+                  id="name"
+                  placeholder="llama3-8b"
+                  value={form.name}
+                  onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                />
+                <p className="text-xs text-muted-foreground">vllm-{form.name || '<이름>'} 으로 생성됩니다</p>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label htmlFor="name">배포 이름 <span className="text-destructive">*</span></Label>
-                  <Input
-                    id="name"
-                    placeholder="llama3-8b"
-                    value={form.name}
-                    onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                  />
-                  <p className="text-xs text-muted-foreground">vllm-{form.name || '<이름>'} 으로 생성됩니다</p>
-                </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="namespace">네임스페이스</Label>
                   <Input
                     id="namespace"
                     value={form.namespace}
                     onChange={e => setForm(f => ({ ...f, namespace: e.target.value }))}
+                  />
+                  <p className="text-xs text-muted-foreground">shared-sllm PVC가 있는 네임스페이스</p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="pvcName">마운트할 PVC 이름</Label>
+                  <Input
+                    id="pvcName"
+                    value={form.pvcName}
+                    onChange={e => setForm(f => ({ ...f, pvcName: e.target.value }))}
                   />
                 </div>
               </div>
@@ -501,6 +520,27 @@ export default function LLMPage() {
                       {['1','2','3'].map(n => <SelectItem key={n} value={n}>{n}</SelectItem>)}
                     </SelectContent>
                   </Select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="cpu">CPU 코어</Label>
+                  <Input
+                    id="cpu"
+                    type="number"
+                    value={form.cpu}
+                    onChange={e => setForm(f => ({ ...f, cpu: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="memory">Memory (GiB)</Label>
+                  <Input
+                    id="memory"
+                    type="number"
+                    value={form.memory}
+                    onChange={e => setForm(f => ({ ...f, memory: e.target.value }))}
+                  />
                 </div>
               </div>
 

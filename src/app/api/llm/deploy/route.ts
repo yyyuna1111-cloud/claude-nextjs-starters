@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const {
       name,
-      namespace = 'default',
+      namespace = 'datascience-storage',
       modelId,
       gpuCount = 1,
       tensorParallelSize,
@@ -27,6 +27,9 @@ export async function POST(req: NextRequest) {
       dtype = 'auto',
       image = 'vllm/vllm-openai:latest',
       replicas = 1,
+      cpu,
+      memory,
+      pvcName = 'shared-sllm',
     } = body
 
     if (!name || !modelId) {
@@ -68,9 +71,10 @@ export async function POST(req: NextRequest) {
           },
           minReplicas: replicas,
           maxReplicas: replicas,
+          runtimeClassName: 'nvidia',
           tolerations: [{ key: 'nvidia.com/gpu', operator: 'Exists', effect: 'NoSchedule' }],
           volumes: [
-            { name: 'model-storage', persistentVolumeClaim: { claimName: 'shared-sllm' } },
+            { name: 'model-storage', persistentVolumeClaim: { claimName: pvcName } },
             { name: 'model-cache', emptyDir: {} },
           ],
           containers: [{
@@ -83,8 +87,16 @@ export async function POST(req: NextRequest) {
             ],
             ports: [{ containerPort: 8080, protocol: 'TCP' }],
             resources: {
-              requests: { 'nvidia.com/gpu': String(gpuCount) },
-              limits: { 'nvidia.com/gpu': String(gpuCount) },
+              requests: { 
+                cpu: String(cpu || gpuCount * 4),
+                memory: `${memory || gpuCount * 32}Gi`,
+                'nvidia.com/gpu': String(gpuCount) 
+              },
+              limits: { 
+                cpu: String(cpu || gpuCount * 8),
+                memory: `${memory || gpuCount * 64}Gi`,
+                'nvidia.com/gpu': String(gpuCount) 
+              },
             },
             volumeMounts: [
               { mountPath: '/mnt/models', name: 'model-storage' },
