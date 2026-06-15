@@ -21,7 +21,7 @@ data:
 
   # JupyterHub
   JUPYTERHUB_URL: "http://hub.datascience-hub.svc.cluster.local:8081"
-  NEXT_PUBLIC_JUPYTERHUB_URL: "http://10.70.171.177:30900"
+  NEXT_PUBLIC_JUPYTERHUB_URL: "http://jupyter-notebook.local:31116"
   JUPYTERHUB_TOKEN: "56b5ee835deb58002bf1f53e322be423c264cc80271fdecdcb5eb67fcb1bfc4d"
 
   # SeaweedFS Filer
