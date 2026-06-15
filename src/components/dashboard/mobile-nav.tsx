@@ -35,7 +35,7 @@ export function MobileNav() {
       <SheetContent side="left" className="w-64 p-0">
         <SheetHeader className="border-b px-4 py-4">
           <SheetTitle className="text-left text-base font-semibold">
-            MLOps Dashboard
+            DS-HUB
           </SheetTitle>
         </SheetHeader>
         {/* 클릭 시 Sheet 닫힘 처리 */}

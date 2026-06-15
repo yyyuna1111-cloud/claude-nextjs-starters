@@ -22,6 +22,7 @@ const adminNavItems = [
   { href: '/dashboard/storage', label: 'Storage', icon: HardDrive },
   { href: '/dashboard/jupyter', label: 'Jupyter', icon: BookOpen },
   { href: '/dashboard/registry', label: 'Registry', icon: Package },
+  { href: '/dashboard/admin/users', label: 'User Management', icon: ShieldCheck },
 ]
 
 const userNavItems = [
@@ -34,10 +35,15 @@ const userNavItems = [
 export function SidebarNav() {
   const pathname = usePathname()
   const { theme, setTheme } = useTheme()
-  const { user, isAdmin, logout } = useCurrentUser()
+  const { user, isAdmin, accessibleMenus, logout } = useCurrentUser()
   const [mounted, setMounted] = React.useState(false)
 
-  const navItems = isAdmin ? adminNavItems : userNavItems
+  const navItems = React.useMemo(() => {
+    if (!accessibleMenus || accessibleMenus.length === 0) {
+      return isAdmin ? adminNavItems : userNavItems
+    }
+    return adminNavItems.filter(item => accessibleMenus.includes(item.href))
+  }, [isAdmin, accessibleMenus])
 
   React.useEffect(() => {
     setMounted(true)

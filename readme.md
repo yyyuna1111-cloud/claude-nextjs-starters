@@ -1,4 +1,4 @@
-# MLOps Dashboard
+# DS-HUB
 
 ## 접속 방법
 

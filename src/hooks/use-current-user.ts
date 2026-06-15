@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 export function useCurrentUser() {
   const [user, setUser] = useState<string | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
+  const [accessibleMenus, setAccessibleMenus] = useState<string[]>([])
   const [loaded, setLoaded] = useState(false)
   const router = useRouter()
 
@@ -15,6 +16,7 @@ export function useCurrentUser() {
       .then(data => {
         setUser(data?.username ?? null)
         setIsAdmin(data?.isAdmin ?? false)
+        setAccessibleMenus(data?.accessibleMenus ?? [])
       })
       .catch(() => setUser(null))
       .finally(() => setLoaded(true))
@@ -28,5 +30,5 @@ export function useCurrentUser() {
     router.push('/login')
   }
 
-  return { user, isAdmin, loaded, logout }
+  return { user, isAdmin, accessibleMenus, loaded, logout }
 }
