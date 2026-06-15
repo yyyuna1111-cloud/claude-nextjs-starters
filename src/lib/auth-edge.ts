@@ -1,4 +1,5 @@
 import { COOKIE_NAME, SESSION_MAX_AGE } from './auth-constants'
+import { Buffer } from 'node:buffer'
 
 export interface SessionPayload {
   u: string
@@ -24,15 +25,17 @@ export async function getHmacKey(): Promise<CryptoKey> {
 }
 
 export function toBase64url(buf: ArrayBuffer): string {
-  return btoa(Array.from(new Uint8Array(buf), b => String.fromCharCode(b)).join(''))
+  return Buffer.from(buf).toString('base64')
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
 }
 
 export function fromBase64url(str: string): ArrayBuffer {
+  // 패딩이 빠져있을 수 있는 base64url 문자열을 다시 복구하여 Buffer로 파싱
   let b64 = str.replace(/-/g, '+').replace(/_/g, '/')
   while (b64.length % 4) b64 += '='
-  const bytes = atob(b64).split('').map(c => c.charCodeAt(0))
-  return new Uint8Array(bytes).buffer
+  const buf = Buffer.from(b64, 'base64')
+  // ArrayBuffer로 안전하게 변환하여 반환
+  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
 }
 
 export async function verifySessionTokenFull(token: string): Promise<SessionPayload | null> {
