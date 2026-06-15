@@ -3,6 +3,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
+ENV NEXT_PUBLIC_JUPYTERHUB_URL="http://jupyter-notebook.local:31116"
 RUN npm run build
 
 FROM node:20-alpine AS runner
