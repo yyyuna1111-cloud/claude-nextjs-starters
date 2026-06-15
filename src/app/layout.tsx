@@ -17,10 +17,10 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    template: '%s | Claude Next.js Starter',
-    default: 'Claude Next.js Starter',
+    template: '%s | DS-HUB',
+    default: 'DS-HUB',
   },
-  description: 'A modern Next.js starter template by Claude',
+  description: 'Data Science Hub',
 }
 
 export default function RootLayout({

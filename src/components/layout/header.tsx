@@ -24,7 +24,7 @@ export function Header() {
           {/* Logo */}
           <div className="flex items-center gap-6">
             <Link href="/" className="flex items-center space-x-2">
-              <span className="text-xl font-bold">MLOps Dashboard</span>
+              <span className="text-xl font-bold">DS-HUB</span>
             </Link>
 
             {/* Desktop Navigation */}

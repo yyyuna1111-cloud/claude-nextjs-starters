@@ -1,0 +1,16 @@
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: jupyter-notebook
+  namespace: datascience-hub
+spec:
+  gateways:
+  - istio-system/shared-gateway
+  hosts:
+  - jupyter-notebook.local
+  http:
+  - route:
+    - destination:
+        host: proxy-public.datascience-hub.svc.cluster.local
+        port:
+          number: 80

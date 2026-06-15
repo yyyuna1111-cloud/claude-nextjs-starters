@@ -46,7 +46,7 @@ export default function DashboardLayout({
               href="/dashboard"
               className="text-sm font-bold tracking-tight transition-opacity hover:opacity-80"
             >
-              MLOps Dashboard
+              DS-HUB
             </Link>
             <div className="mt-1 flex items-center gap-1.5">
               <span className="text-[10px] text-muted-foreground/60 font-medium">v0.1.0</span>
@@ -117,7 +117,7 @@ export default function DashboardLayout({
             <div className="flex items-center gap-2">
               <BrainCircuit className="text-primary size-5" />
               <div className="flex flex-col leading-none">
-                <span className="text-xs font-black tracking-tight">MLOps Dashboard</span>
+                <span className="text-xs font-black tracking-tight">DS-HUB</span>
                 <div className="flex items-center gap-1 mt-0.5">
                   <div className={cn(
                     "size-1 rounded-full",
