@@ -6,6 +6,7 @@ metadata:
 data:
   NODE_ENV: "production"
   TARGET_ENV: "DEV"
+  HOSTNAME: "0.0.0.0"
 
   # Kubernetes
   K8S_DEV_API_URL: "https://10.70.171.177:6443"
