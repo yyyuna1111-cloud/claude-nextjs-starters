@@ -19,6 +19,9 @@ import {
   Share2,
   Database,
   AlertCircle,
+  Copy,
+  FolderPlus,
+  ClipboardPaste,
 } from 'lucide-react'
 import { useCurrentUser } from '@/hooks/use-current-user'
 import { Badge } from '@/components/ui/badge'
@@ -41,6 +44,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
@@ -361,6 +366,10 @@ function FileBrowser({ currentUser, isAdmin }: { currentUser: string; isAdmin: b
   const [pvcLoading, setPvcLoading] = useState(true)
   const [deleteTarget, setDeleteTarget] = useState<{ key: string; name: string } | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [clipboard, setClipboard] = useState<{ bucket: string; key: string; name: string; isFolder: boolean } | null>(null)
+  const [showMkdir, setShowMkdir] = useState(false)
+  const [newFolderName, setNewFolderName] = useState('')
+  const [mkdirLoading, setMkdirLoading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const initializedRef = useRef(false)
 
@@ -475,6 +484,67 @@ function FileBrowser({ currentUser, isAdmin }: { currentUser: string; isAdmin: b
     }
   }
 
+  async function handleMkdir() {
+    if (!selectedBucket || !newFolderName.trim()) return
+    setMkdirLoading(true)
+    try {
+      const res = await fetch('/api/storage/mkdir', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bucket: selectedBucket, prefix, name: newFolderName.trim() }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        toast.success(`'${newFolderName.trim()}' 폴더 생성 완료`)
+        setShowMkdir(false)
+        setNewFolderName('')
+        browse(selectedBucket, prefix)
+      } else {
+        toast.error(data.error ?? '폴더 생성 실패')
+      }
+    } catch {
+      toast.error('폴더 생성 실패')
+    } finally {
+      setMkdirLoading(false)
+    }
+  }
+
+  function handleCopyItem(key: string, name: string, isFolder: boolean) {
+    if (!selectedBucket) return
+    setClipboard({ bucket: selectedBucket, key, name, isFolder })
+    toast.success(`'${name}' 복사됨 — 붙여넣을 위치로 이동 후 붙여넣기를 누르세요`)
+  }
+
+  async function handlePaste() {
+    if (!clipboard || !selectedBucket) return
+    const destName = clipboard.bucket === selectedBucket && (clipboard.key === prefix + clipboard.name || clipboard.key === prefix + clipboard.name + '/')
+      ? `${clipboard.name}_copy`
+      : clipboard.name
+    try {
+      const res = await fetch('/api/storage/copy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sourceBucket: clipboard.bucket,
+          sourceKey: clipboard.key,
+          destBucket: selectedBucket,
+          destPrefix: prefix,
+          name: destName,
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        toast.success(`'${destName}' 붙여넣기 완료`)
+        setClipboard(null)
+        browse(selectedBucket, prefix)
+      } else {
+        toast.error(data.error ?? '붙여넣기 실패')
+      }
+    } catch {
+      toast.error('붙여넣기 실패')
+    }
+  }
+
   // selectedBucket(volumeName)으로 PVC 표시명 역조회
   const currentPvc = pvcs.find(p => (p.volumeName || p.name) === selectedBucket)
 
@@ -573,6 +643,28 @@ function FileBrowser({ currentUser, isAdmin }: { currentUser: string; isAdmin: b
                 {currentPvc.capacity} 할당
               </Badge>
             )}
+            {clipboard && (
+              <Button
+                size="sm"
+                variant="secondary"
+                className="h-8 gap-1.5 text-xs"
+                onClick={handlePaste}
+                disabled={!selectedBucket}
+              >
+                <ClipboardPaste className="size-3.5" />
+                붙여넣기
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 gap-1.5 text-xs"
+              onClick={() => { setShowMkdir(true); setNewFolderName('') }}
+              disabled={!selectedBucket}
+            >
+              <FolderPlus className="size-3.5" />
+              새 폴더
+            </Button>
             <input
               ref={fileInputRef}
               type="file"
@@ -656,7 +748,19 @@ function FileBrowser({ currentUser, isAdmin }: { currentUser: string; isAdmin: b
                         <TableCell className="font-medium text-sm">{folder.name}</TableCell>
                         <TableCell className="text-xs text-muted-foreground">—</TableCell>
                         <TableCell className="text-xs text-muted-foreground">—</TableCell>
-                        <TableCell />
+                        <TableCell>
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-7"
+                              onClick={e => { e.stopPropagation(); handleCopyItem(folder.prefix, folder.name, true) }}
+                              title="복사"
+                            >
+                              <Copy className="size-3.5" />
+                            </Button>
+                          </div>
+                        </TableCell>
                       </TableRow>
                     ))}
 
@@ -677,6 +781,15 @@ function FileBrowser({ currentUser, isAdmin }: { currentUser: string; isAdmin: b
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="size-7"
+                                onClick={() => handleCopyItem(file.key, file.name, false)}
+                                title="복사"
+                              >
+                                <Copy className="size-3.5" />
+                              </Button>
                               <Button
                                 variant="ghost"
                                 size="icon"
@@ -724,6 +837,34 @@ function FileBrowser({ currentUser, isAdmin }: { currentUser: string; isAdmin: b
             </Button>
             <Button variant="destructive" size="sm" onClick={handleDelete}>
               삭제
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 새 폴더 다이얼로그 */}
+      <Dialog open={showMkdir} onOpenChange={open => { setShowMkdir(open); if (!open) setNewFolderName('') }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>새 폴더 만들기</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="folder-name" className="text-sm">폴더 이름</Label>
+            <Input
+              id="folder-name"
+              value={newFolderName}
+              onChange={e => setNewFolderName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleMkdir() }}
+              placeholder="새 폴더"
+              autoFocus
+            />
+          </div>
+          <div className="flex justify-end gap-2 mt-2">
+            <Button variant="outline" size="sm" onClick={() => setShowMkdir(false)}>
+              취소
+            </Button>
+            <Button size="sm" onClick={handleMkdir} disabled={mkdirLoading || !newFolderName.trim()}>
+              {mkdirLoading ? '생성 중...' : '만들기'}
             </Button>
           </div>
         </DialogContent>
