@@ -12,24 +12,25 @@ import { cn } from '@/lib/utils'
 import { useCurrentUser } from '@/hooks/use-current-user'
 
 const adminNavItems = [
-  { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
-  { href: '/dashboard/serving', label: 'Service Operation', icon: Server },
-  { href: '/dashboard/llm', label: 'Private LLM', icon: Bot },
-  { href: '/dashboard/deployments', label: 'Deployment Timelines', icon: GitBranch },
-  { href: '/dashboard/evaluation', label: '퀄리티 게이트', icon: ShieldCheck },
-  { href: '/dashboard/scraping', label: 'Data Scraping', icon: Database },
-  { href: '/dashboard/infrastructure', label: 'Infrastructure', icon: Network },
-  { href: '/dashboard/storage', label: 'Storage', icon: HardDrive },
-  { href: '/dashboard/jupyter', label: 'Jupyter', icon: BookOpen },
-  { href: '/dashboard/registry', label: 'Registry', icon: Package },
-  { href: '/dashboard/admin/users', label: 'User Management', icon: ShieldCheck },
+  { href: '/workspace', label: 'Overview', icon: LayoutDashboard },
+  { href: '/workspace/serving', label: 'Service Operation', icon: Server },
+  { href: '/workspace/llm', label: 'Private LLM', icon: Bot },
+  { href: '/workspace/deployments', label: 'Deployment Timelines', icon: GitBranch },
+  { href: '/workspace/evaluation', label: '퀄리티 게이트', icon: ShieldCheck },
+  { href: '/workspace/scraping', label: 'Data Scraping', icon: Database },
+  { href: '/workspace/infrastructure', label: 'Infrastructure', icon: Network },
+  { href: '/workspace/storage', label: 'Storage', icon: HardDrive },
+  { href: '/workspace/jupyter', label: 'Jupyter', icon: BookOpen },
+  { href: '/workspace/registry', label: 'Registry', icon: Package },
+  { href: '/workspace/admin/users', label: 'User Management', icon: ShieldCheck },
 ]
 
 const userNavItems = [
-  { href: '/dashboard/llm', label: 'Private LLM', icon: Bot },
-  { href: '/dashboard/storage', label: 'Storage', icon: HardDrive },
-  { href: '/dashboard/jupyter', label: 'Jupyter', icon: BookOpen },
-  { href: '/dashboard/registry', label: 'Registry', icon: Package },
+  { href: '/workspace/storage', label: 'Storage', icon: HardDrive },
+  { href: '/workspace/scraping', label: 'Data Scraping', icon: Database },
+  { href: '/workspace/jupyter', label: 'Jupyter', icon: BookOpen },
+  { href: '/workspace/registry', label: 'Registry', icon: Package },
+  { href: '/workspace/llm', label: 'Private LLM', icon: Bot },
 ]
 
 export function SidebarNav() {
@@ -53,8 +54,8 @@ export function SidebarNav() {
     <nav className="flex flex-col gap-1 px-2 h-full">
       <div className="flex-1">
         {navItems.map(item => {
-          const isActive = item.href === '/dashboard'
-            ? pathname === '/dashboard'
+          const isActive = item.href === '/workspace'
+            ? pathname === '/workspace'
             : pathname === item.href || pathname.startsWith(item.href + '/')
 
           const Icon = item.icon

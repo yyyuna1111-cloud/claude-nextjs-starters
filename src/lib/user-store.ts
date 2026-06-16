@@ -31,13 +31,25 @@ function ensureStoreDir() {
 
 export function getUsers(): User[] {
   if (!fs.existsSync(STORE_PATH)) {
-    // 마이그레이션: 기존 환경변수가 있으면 그걸로 초기화
     migrateFromEnv()
   }
-  
+
   try {
     const data = fs.readFileSync(STORE_PATH, 'utf-8')
-    return JSON.parse(data)
+    const users: User[] = JSON.parse(data)
+
+    // /dashboard/* → /workspace/* 자동 마이그레이션
+    const needsMigration = users.some(u => u.accessibleMenus.some(m => m.startsWith('/dashboard')))
+    if (needsMigration) {
+      const migrated = users.map(u => ({
+        ...u,
+        accessibleMenus: u.accessibleMenus.map(m => m.replace(/^\/dashboard/, '/workspace')),
+      }))
+      saveUsers(migrated)
+      return migrated
+    }
+
+    return users
   } catch (err) {
     console.error('Failed to read users.json', err)
     return []
@@ -56,10 +68,10 @@ function migrateFromEnv() {
   
   // 기본 모든 메뉴 접근 권한 (마이그레이션 용)
   const allMenus = [
-    '/dashboard', '/dashboard/serving', '/dashboard/llm', 
-    '/dashboard/deployments', '/dashboard/evaluation', 
-    '/dashboard/scraping', '/dashboard/infrastructure', 
-    '/dashboard/storage', '/dashboard/jupyter', '/dashboard/registry'
+    '/workspace', '/workspace/serving', '/workspace/llm',
+    '/workspace/deployments', '/workspace/evaluation',
+    '/workspace/scraping', '/workspace/infrastructure',
+    '/workspace/storage', '/workspace/jupyter', '/workspace/registry'
   ]
 
   for (const entry of raw.split(',')) {

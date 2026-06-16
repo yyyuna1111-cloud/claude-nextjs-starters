@@ -17,7 +17,7 @@ import { Label } from '@/components/ui/label'
 export function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const next = searchParams.get('next') ?? '/dashboard/storage'
+  const next = searchParams.get('next') ?? '/workspace/storage'
 
   const [showPassword, setShowPassword] = useState(false)
   const [username, setUsername] = useState('')
@@ -54,7 +54,7 @@ export function LoginForm() {
       <CardHeader className="space-y-1">
         <CardTitle className="text-center text-2xl font-bold">로그인</CardTitle>
         <CardDescription className="text-center">
-          MLOps 대시보드에 로그인하세요
+          DS-HUB에 로그인하세요
         </CardDescription>
       </CardHeader>
       <CardContent>

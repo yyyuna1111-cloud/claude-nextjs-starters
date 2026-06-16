@@ -43,7 +43,7 @@ export default function DashboardLayout({
           </div>
           <div className="flex flex-col leading-tight">
             <Link
-              href="/dashboard"
+              href="/workspace/storage"
               className="text-sm font-bold tracking-tight transition-opacity hover:opacity-80"
             >
               DS-HUB
