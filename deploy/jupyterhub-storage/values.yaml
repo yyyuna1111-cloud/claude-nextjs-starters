@@ -6,7 +6,7 @@
 
 hub:
   services:
-    mlops-dashboard:
+    dshub:
       apiToken: {토큰토큰토큰}
       admin: true
   nodeSelector:
@@ -32,6 +32,10 @@ hub:
       DEFAULT_IMAGE = "10.70.170.227:80/jupyter/base-notebook:x86_64-python-3.11.6"
       EXTRA_PVC_MOUNTS = {
           "shared-sllm": "/home/jovyan/shared-sllm",
+      }
+      GPU_NODE_SELECTORS = {
+          "standard": {"serving.type": "gpu-standard"},
+          "high": {"serving.type": "gpu-high"},
       }
       async def pre_spawn_hook(spawner):
           username = spawner.user.name
@@ -60,6 +64,11 @@ hub:
                   })
           spawner.volumes = volumes
           spawner.volume_mounts = volume_mounts
+          gpu_type = spawner.user_options.get("gpu_type")
+          if gpu_type in GPU_NODE_SELECTORS:
+              spawner.node_selector = GPU_NODE_SELECTORS[gpu_type]
+              spawner.extra_resource_limits = {"nvidia.com/gpu": "1"}
+              spawner.extra_resource_guarantees = {"nvidia.com/gpu": "1"}
       c.KubeSpawner.pre_spawn_hook = pre_spawn_hook
 
 singleuser:

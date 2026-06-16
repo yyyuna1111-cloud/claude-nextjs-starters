@@ -45,6 +45,7 @@ export default function JupyterPage() {
   const [newName, setNewName] = useState('')
   const [newImage, setNewImage] = useState('')
   const [mountSllm, setMountSllm] = useState(false)
+  const [gpuType, setGpuType] = useState<'none' | 'standard' | 'high'>('none')
   const [nameError, setNameError] = useState('')
   const [creating, setCreating] = useState(false)
   const [deletingName, setDeletingName] = useState<string | null>(null)
@@ -106,6 +107,7 @@ export default function JupyterPage() {
     setNewName('')
     setNewImage('')
     setMountSllm(false)
+    setGpuType('none')
     setNameError('')
     setImageMode('select')
   }
@@ -126,6 +128,7 @@ export default function JupyterPage() {
           name: newName.trim(),
           image: newImage.trim() || undefined,
           extra_pvcs: mountSllm ? ['shared-sllm'] : [],
+          gpu_type: gpuType === 'none' ? undefined : gpuType,
         }),
       })
       const data = await res.json()
@@ -309,6 +312,20 @@ export default function JupyterPage() {
                   </label>
                 </div>
               </div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">GPU <span className="text-muted-foreground font-normal">(선택)</span></label>
+              <Select value={gpuType} onValueChange={v => setGpuType(v as 'none' | 'standard' | 'high')}>
+                <SelectTrigger className="h-9 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">사용 안 함</SelectItem>
+                  <SelectItem value="standard">Standard — ds-dev-005 (1x GPU)</SelectItem>
+                  <SelectItem value="high">High — H200 (op-l-h200-gpu-004)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">GPU 선택 시 해당 GPU 노드에만 스케줄링됩니다. 자원이 부족하면 Pending 상태로 대기합니다.</p>
             </div>
             <div className="flex justify-end gap-2 pt-1">
               <Button variant="outline" size="sm" onClick={handleDialogClose}>취소</Button>
