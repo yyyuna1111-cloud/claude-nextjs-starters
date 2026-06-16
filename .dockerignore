@@ -1,0 +1,10 @@
+.env*
+!.env.production
+copied_*.env*
+node_modules
+.next
+.git
+.idea
+test-jwt.*
+debug_hub.py
+docs/
