@@ -4,14 +4,6 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   poweredByHeader: false,
   compress: true,
-  async rewrites() {
-    return [
-      {
-        source: '/workspace/:path*',
-        destination: '/dashboard/:path*',
-      },
-    ]
-  },
   transpilePackages: ['react-syntax-highlighter'],
   images: {
     formats: ['image/webp', 'image/avif'],
