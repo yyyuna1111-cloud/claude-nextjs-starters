@@ -30,6 +30,9 @@ hub:
       c.JupyterHub.allow_named_servers = True
     spawnHook: |
       DEFAULT_IMAGE = "10.70.170.227:80/jupyter/base-notebook:x86_64-python-3.11.6"
+      GPU_IMAGES = {
+          "high": "10.70.170.227:80/jupyter/base-notebook:x86_64-cuda12.1-python-3.11.6",
+      }
       EXTRA_PVC_MOUNTS = {
           "shared-sllm": "/home/jovyan/shared-sllm",
       }
@@ -40,7 +43,9 @@ hub:
       async def pre_spawn_hook(spawner):
           username = spawner.user.name
           servername = spawner.name or "default"
-          image = spawner.user_options.get("image", DEFAULT_IMAGE)
+          gpu_type = spawner.user_options.get("gpu_type")
+          default_image = GPU_IMAGES.get(gpu_type, DEFAULT_IMAGE)
+          image = spawner.user_options.get("image") or default_image
           spawner.image = image
           volumes = [{
               "name": "personal-storage",
@@ -64,7 +69,6 @@ hub:
                   })
           spawner.volumes = volumes
           spawner.volume_mounts = volume_mounts
-          gpu_type = spawner.user_options.get("gpu_type")
           if gpu_type in GPU_NODE_SELECTORS:
               spawner.node_selector = GPU_NODE_SELECTORS[gpu_type]
               spawner.extra_resource_limits = {"nvidia.com/gpu": "1"}

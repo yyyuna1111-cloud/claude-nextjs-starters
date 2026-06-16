@@ -321,11 +321,11 @@ export default function JupyterPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">사용 안 함</SelectItem>
-                  <SelectItem value="standard">Standard — ds-dev-005 (1x GPU)</SelectItem>
+                  <SelectItem value="standard" disabled>Standard — ds-dev-005 (준비중, 자원 부족)</SelectItem>
                   <SelectItem value="high">High — H200 (op-l-h200-gpu-004)</SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted-foreground">GPU 선택 시 해당 GPU 노드에만 스케줄링됩니다. 자원이 부족하면 Pending 상태로 대기합니다.</p>
+              <p className="text-xs text-muted-foreground">GPU 선택 시 해당 GPU 노드에만 스케줄링되며, CUDA가 포함된 이미지로 자동 전환됩니다. 자원이 부족하면 Pending 상태로 대기합니다.</p>
             </div>
             <div className="flex justify-end gap-2 pt-1">
               <Button variant="outline" size="sm" onClick={handleDialogClose}>취소</Button>
