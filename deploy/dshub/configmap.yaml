@@ -39,5 +39,5 @@ data:
   ARGO: "http://argo-workflows-server.argo.svc.cluster.local:2746"
 
   # Registry
-  DOCKER_REGISTRY_URL: "http://10.70.170.227"
+  DOCKER_REGISTRY_URL: "http://10.70.170.227:80"
   NEXT_PUBLIC_REGISTRY_HOST: "10.70.170.227"
