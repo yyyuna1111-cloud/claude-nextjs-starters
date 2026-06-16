@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dshub-env
+  namespace: dshub
+data:
+  NODE_ENV: "production"
+  TARGET_ENV: "DEV"
+  HOSTNAME: "0.0.0.0"
+
+  # Kubernetes
+  K8S_DEV_API_URL: "https://10.70.171.177:6443"
+  K8S_DEV_TOKEN: "eyJhbGciOiJSUzI1NiIsImtpZCI6IlpRNlhnZ3lXa09USFhIdUR4YnJwRm5OZ0ZJOFJZXzh5UHA1T21RaGxhSFkifQ.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJrdWJlLXN5c3RlbSIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VjcmV0Lm5hbWUiOiJ3aWRlLWFwaS1zZWNyZXQiLCJrdWJlcm5ldGVzLmlvL3NlcnZpY2VhY2NvdW50L3NlcnZpY2UtYWNjb3VudC5uYW1lIjoid2lkZS1hcGkiLCJrdWJlcm5ldGVzLmlvL3NlcnZpY2VhY2NvdW50L3NlcnZpY2UtYWNjb3VudC51aWQiOiIwYjllNWQzYS1lMzE4LTQ1NzgtODYzMS1lMzJhNjNkMjk2NzIiLCJzdWIiOiJzeXN0ZW06c2VydmljZWFjY291bnQ6a3ViZS1zeXN0ZW06d2lkZS1hcGkifQ.GR7cjI2O3ZcehTGOxvYm_fgTxxrzi_FRmszgvkupwgY8pogMCKWqA6kBkdAdohzKLTSjhEQHNPtm2Br0cNK7gd4lFmo0Hn4skcyinXlfnl9znunH89YDWwW12f6otaZSmG0WsJpDPxYqU2L44mEAOSH-kQfm2Mz1YYcuXGmCX2ekTGpQAi6qgCMYD2dPyAHC0dnQrCyWPGs7aPafIXvK09USieplP0JKSRlUn2Hpf0Ha9-_zFn1I4cIu7MjTw5RgIluFR4wttzK_gdPzni8bl48RYdTWQUe6ROvH8-iiGzCURo8JPNGE5mLKaMLhjPTs0vCzQ24_TNMoSnK3z-Xg_w"
+  K8S_DEV_DISPLAY_IP: "10.70.171.187"
+  K8S_SKIP_TLS_VERIFY: "true"
+
+  # Auth
+  AUTH_SECRET: "dshub-secret-2026"
+  COOKIE_SECURE: "false"
+  USER_PASSWORDS: "seungyeon2:seungyeon2,hb0619:hb0619,jaeyeop0722:jaeyeop0722,joowop12:joowop12,pomnwq24:pomnwq24,sjko1020:sjko1020,sryang1:sryang1,wjkim01:wjkim01,wth0086:wth0086,ynlee0804:ynlee0804,yun4703:yun4703"
+
+  # JupyterHub
+  JUPYTERHUB_URL: "http://hub.datascience-hub.svc.cluster.local:8081"
+  NEXT_PUBLIC_JUPYTERHUB_URL: "http://jupyter-notebook.local:31116"
+  JUPYTERHUB_TOKEN: "56b5ee835deb58002bf1f53e322be423c264cc80271fdecdcb5eb67fcb1bfc4d"
+
+  # SeaweedFS Filer
+  SEAWEEDFS_FILER_URL: "http://seaweedfs.kubeflow.svc.cluster.local:8888"
+
+  # SeaweedFS S3
+  SEAWEEDFS_ENDPOINT: "http://seaweedfs.kubeflow.svc.cluster.local:8333"
+  SEAWEEDFS_ACCESS_KEY: "admin"
+  SEAWEEDFS_SECRET_KEY: "skyadmin"
+  SEAWEEDFS_BUCKET: "mlpipeline"
+  S3_ENDPOINT: "http://seaweedfs.kubeflow.svc.cluster.local:8333"
+  S3_BUCKET: "tax-new"
+
+  # Argo Workflows
+  ARGO: "http://argo-workflows-server.argo.svc.cluster.local:2746"
+
+  # Registry
+  DOCKER_REGISTRY_URL: "http://10.70.170.227"
+  NEXT_PUBLIC_REGISTRY_HOST: "10.70.170.227"

@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dshub
+  namespace: dshub
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dshub
+  template:
+    metadata:
+      labels:
+        app: dshub
+    spec:
+      containers:
+        - name: dshub
+          image: 10.70.170.227:80/mlops-dashboard:v0.1.25
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: dshub-env
+          volumeMounts:
+            - name: sllm-storage
+              mountPath: /mnt/sllm
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: sllm-storage
+          persistentVolumeClaim:
+            claimName: shared-sllm
