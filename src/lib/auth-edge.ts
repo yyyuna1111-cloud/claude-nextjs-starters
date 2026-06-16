@@ -1,5 +1,4 @@
 import { COOKIE_NAME, SESSION_MAX_AGE } from './auth-constants'
-import { Buffer } from 'node:buffer'
 
 export interface SessionPayload {
   u: string
@@ -10,7 +9,6 @@ export interface SessionPayload {
 
 export function getSecret(): string {
   const secret = process.env.AUTH_SECRET
-  // Edge 런타임에서 process.env.AUTH_SECRET을 못 읽을 경우를 대비해 configmap과 동일한 하드코딩 폴백 추가
   return secret || 'mlops-dashboard-secret-2026'
 }
 
@@ -24,18 +22,24 @@ export async function getHmacKey(): Promise<CryptoKey> {
   )
 }
 
-export function toBase64url(buf: ArrayBuffer): string {
-  return Buffer.from(buf).toString('base64')
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
+export function toBase64url(bytes: Uint8Array): string {
+  let binary = ''
+  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i])
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
 }
 
 export function fromBase64url(str: string): ArrayBuffer {
-  // 패딩이 빠져있을 수 있는 base64url 문자열을 다시 복구하여 Buffer로 파싱
   let b64 = str.replace(/-/g, '+').replace(/_/g, '/')
   while (b64.length % 4) b64 += '='
-  const buf = Buffer.from(b64, 'base64')
-  // ArrayBuffer로 안전하게 변환하여 반환
-  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
+  const binary = atob(b64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return bytes.buffer as ArrayBuffer
+}
+
+function strToBuffer(str: string): ArrayBuffer {
+  const u8 = new TextEncoder().encode(str)
+  return u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength) as ArrayBuffer
 }
 
 export async function verifySessionTokenFull(token: string): Promise<SessionPayload | null> {
@@ -46,14 +50,13 @@ export async function verifySessionTokenFull(token: string): Promise<SessionPayl
     const sigStr = token.slice(dot + 1)
     const key = await getHmacKey()
     const valid = await crypto.subtle.verify(
-      'HMAC', key, fromBase64url(sigStr), new TextEncoder().encode(encoded).buffer as ArrayBuffer
+      'HMAC', key, fromBase64url(sigStr), strToBuffer(encoded)
     )
     if (!valid) return null
-    
+
     const payload = JSON.parse(new TextDecoder().decode(fromBase64url(encoded))) as SessionPayload
     if (Math.floor(Date.now() / 1000) - payload.iat > SESSION_MAX_AGE) return null
-    
-    // 이전 버전의 토큰(m, a 필드가 없는 경우)은 무효화하여 재로그인 유도
+
     if (payload.m === undefined || payload.a === undefined) return null
 
     return payload
