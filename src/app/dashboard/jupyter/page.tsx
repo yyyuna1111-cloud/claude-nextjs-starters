@@ -1,13 +1,13 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { ExternalLink, Plus, Trash2, RefreshCw, BookOpen, Loader2, KeyRound } from 'lucide-react'
+import { ExternalLink, Plus, Trash2, RefreshCw, BookOpen, Loader2, KeyRound, PowerOff, Play, WifiOff } from 'lucide-react'
 import { useCurrentUser } from '@/hooks/use-current-user'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { toast } from 'sonner'
@@ -24,6 +24,11 @@ interface Server {
   url: string
 }
 
+interface OfflineServer {
+  name: string
+  nfsType: string
+}
+
 const SERVER_NAME_REGEX = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/
 
 function StatusBadge({ ready, pending }: { ready: boolean; pending: string | null }) {
@@ -36,6 +41,7 @@ function StatusBadge({ ready, pending }: { ready: boolean; pending: string | nul
 export default function JupyterPage() {
   const { user, loaded } = useCurrentUser()
   const [servers, setServers] = useState<Server[]>([])
+  const [offlineServers, setOfflineServers] = useState<OfflineServer[]>([])
   const [openingServer, setOpeningServer] = useState<string | null>(null)
   const [reauthing, setReauthing] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -46,16 +52,30 @@ export default function JupyterPage() {
   const [gpuType, setGpuType] = useState<'none' | 'standard' | 'high'>('none')
   const [nameError, setNameError] = useState('')
   const [creating, setCreating] = useState(false)
-  const [deletingName, setDeletingName] = useState<string | null>(null)
+  const [offingName, setOffingName] = useState<string | null>(null)
+  const [startingName, setStartingName] = useState<string | null>(null)
   const [jupyterImages, setJupyterImages] = useState<JupyterImage[]>([])
   const [imageMode, setImageMode] = useState<'select' | 'manual'>('select')
+
+  // 삭제 확인 다이얼로그
+  const [confirmDelete, setConfirmDelete] = useState<{
+    name: string
+    isOffline: boolean
+    nfsType?: string
+  } | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const fetchServers = useCallback(async (u: string) => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/jupyter/servers?username=${encodeURIComponent(u)}`)
-      const data = await res.json()
-      setServers(data.servers ?? [])
+      const [serverRes, offlineRes] = await Promise.all([
+        fetch(`/api/jupyter/servers?username=${encodeURIComponent(u)}`),
+        fetch(`/api/jupyter/offline-servers?username=${encodeURIComponent(u)}`),
+      ])
+      const serverData = await serverRes.json()
+      const offlineData = await offlineRes.json()
+      setServers(serverData.servers ?? [])
+      setOfflineServers(offlineData.servers ?? [])
     } catch {
       toast.error('서버 목록 조회 실패')
     } finally {
@@ -175,24 +195,90 @@ export default function JupyterPage() {
     }
   }
 
-  async function handleDelete(name: string) {
+  async function handleOff(name: string) {
     if (!user) return
-    setDeletingName(name)
+    setOffingName(name)
     try {
-      const res = await fetch(`/api/jupyter/servers/${encodeURIComponent(name)}?username=${encodeURIComponent(user)}`, {
-        method: 'DELETE',
-      })
+      const res = await fetch(
+        `/api/jupyter/servers/${encodeURIComponent(name)}?username=${encodeURIComponent(user)}&action=off`,
+        { method: 'DELETE' }
+      )
       const data = await res.json()
       if (data.success) {
-        toast.success(`${name} 종료됨`)
+        toast.success(`${name} 종료됨 (데이터 보존)`)
         fetchServers(user)
       } else {
-        toast.error(data.error ?? '삭제 실패')
+        toast.error(data.error ?? '종료 실패')
+      }
+    } catch {
+      toast.error('종료 실패')
+    } finally {
+      setOffingName(null)
+    }
+  }
+
+  async function handleDeleteConfirmed() {
+    if (!confirmDelete || !user) return
+    setDeleting(true)
+    try {
+      if (confirmDelete.isOffline) {
+        // 오프라인 서버: NFS 폴더만 삭제
+        const params = new URLSearchParams({ username: user, name: confirmDelete.name })
+        if (confirmDelete.nfsType) params.set('nfs_type', confirmDelete.nfsType)
+        const res = await fetch(`/api/jupyter/offline-servers?${params}`, { method: 'DELETE' })
+        const data = await res.json()
+        if (data.success) {
+          toast.success(`${confirmDelete.name} 영구 삭제됨`)
+          fetchServers(user)
+        } else {
+          toast.error(data.error ?? '삭제 실패')
+        }
+      } else {
+        // 실행 중 서버: 파드 종료 + NFS 폴더 삭제
+        const res = await fetch(
+          `/api/jupyter/servers/${encodeURIComponent(confirmDelete.name)}?username=${encodeURIComponent(user)}&action=delete`,
+          { method: 'DELETE' }
+        )
+        const data = await res.json()
+        if (data.success) {
+          toast.success(`${confirmDelete.name} 영구 삭제됨`)
+          fetchServers(user)
+        } else {
+          toast.error(data.error ?? '삭제 실패')
+        }
       }
     } catch {
       toast.error('삭제 실패')
     } finally {
-      setDeletingName(null)
+      setDeleting(false)
+      setConfirmDelete(null)
+    }
+  }
+
+  async function handleStartOffline(server: OfflineServer) {
+    if (!user) return
+    setStartingName(`${server.name}:${server.nfsType}`)
+    try {
+      const res = await fetch('/api/jupyter/servers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: user,
+          name: server.name,
+          nfs_type: server.nfsType,
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        toast.success(`${server.name} 재시작 중...`)
+        fetchServers(user)
+      } else {
+        toast.error(data.error ?? '재시작 실패')
+      }
+    } catch {
+      toast.error('재시작 실패')
+    } finally {
+      setStartingName(null)
     }
   }
 
@@ -330,7 +416,31 @@ export default function JupyterPage() {
         </DialogContent>
       </Dialog>
 
-      {/* 서버 목록 */}
+      {/* 삭제 확인 다이얼로그 */}
+      <Dialog open={!!confirmDelete} onOpenChange={open => !open && !deleting && setConfirmDelete(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>서버 영구 삭제</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            <span className="font-mono font-semibold text-foreground">{confirmDelete?.name}</span> 서버를 삭제합니다.
+          </p>
+          <p className="text-sm text-destructive font-medium">
+            ⚠️ 저장된 모든 데이터가 영구 삭제됩니다. 계속하시겠습니까?
+          </p>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" size="sm" onClick={() => setConfirmDelete(null)} disabled={deleting}>
+              취소
+            </Button>
+            <Button variant="destructive" size="sm" onClick={handleDeleteConfirmed} disabled={deleting}>
+              {deleting ? <Loader2 className="size-3.5 animate-spin mr-1.5" /> : <Trash2 className="size-3.5 mr-1.5" />}
+              영구 삭제
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 실행 중 서버 목록 */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
@@ -402,14 +512,23 @@ export default function JupyterPage() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="size-7 text-destructive hover:text-destructive"
-                          onClick={e => { e.stopPropagation(); handleDelete(server.name) }}
-                          disabled={deletingName === server.name}
-                          title="삭제"
+                          className="size-7 text-muted-foreground hover:text-foreground"
+                          onClick={e => { e.stopPropagation(); handleOff(server.name) }}
+                          disabled={offingName === server.name}
+                          title="Off (데이터 보존)"
                         >
-                          {deletingName === server.name
+                          {offingName === server.name
                             ? <Loader2 className="size-3.5 animate-spin" />
-                            : <Trash2 className="size-3.5" />}
+                            : <PowerOff className="size-3.5" />}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-7 text-destructive hover:text-destructive"
+                          onClick={e => { e.stopPropagation(); setConfirmDelete({ name: server.name, isOffline: false }) }}
+                          title="완전 삭제 (데이터 포함)"
+                        >
+                          <Trash2 className="size-3.5" />
                         </Button>
                       </div>
                     </TableCell>
@@ -420,6 +539,67 @@ export default function JupyterPage() {
           </Table>
         </CardContent>
       </Card>
+
+      {/* 오프라인 서버 목록 */}
+      {!loading && offlineServers.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <WifiOff className="size-4 text-muted-foreground" />
+              오프라인 서버 (데이터 보존 중)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>서버 이름</TableHead>
+                  <TableHead>스토리지</TableHead>
+                  <TableHead className="text-right">작업</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {offlineServers.map(server => {
+                  const key = `${server.name}:${server.nfsType}`
+                  return (
+                    <TableRow key={key}>
+                      <TableCell className="font-mono text-sm">{server.name}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {server.nfsType === 'ds-nfs' ? 'DS NFS' : 'shared-sllm'}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-7 text-muted-foreground hover:text-foreground"
+                            onClick={() => handleStartOffline(server)}
+                            disabled={startingName === key}
+                            title="재시작"
+                          >
+                            {startingName === key
+                              ? <Loader2 className="size-3.5 animate-spin" />
+                              : <Play className="size-3.5" />}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-7 text-destructive hover:text-destructive"
+                            onClick={() => setConfirmDelete({ name: server.name, isOffline: true, nfsType: server.nfsType })}
+                            title="완전 삭제"
+                          >
+                            <Trash2 className="size-3.5" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }
