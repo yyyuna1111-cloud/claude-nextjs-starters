@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { ExternalLink, Plus, Trash2, RefreshCw, BookOpen, Loader2 } from 'lucide-react'
+import { ExternalLink, Plus, Trash2, RefreshCw, BookOpen, Loader2, KeyRound } from 'lucide-react'
 import { useCurrentUser } from '@/hooks/use-current-user'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -37,7 +37,7 @@ export default function JupyterPage() {
   const { user, loaded } = useCurrentUser()
   const [servers, setServers] = useState<Server[]>([])
   const [openingServer, setOpeningServer] = useState<string | null>(null)
-  const [pendingOpenUrl, setPendingOpenUrl] = useState<string | null>(null)
+  const [reauthing, setReauthing] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [newName, setNewName] = useState('')
@@ -148,10 +148,30 @@ export default function JupyterPage() {
       })
       const data = await res.json()
       const url = data.token ? `${server.url}?token=${data.token}` : server.url
-      setPendingOpenUrl(url)
+      window.open(url, '_blank')
     } catch {
       window.open(server.url, '_blank')
+    } finally {
       setOpeningServer(null)
+    }
+  }
+
+  async function handleReauth(server: Server) {
+    if (!user) return
+    setReauthing(server.name)
+    try {
+      const res = await fetch('/api/jupyter/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: user }),
+      })
+      const data = await res.json()
+      const url = data.token ? `${server.url}?token=${data.token}` : server.url
+      window.open(url, '_blank')
+    } catch {
+      window.open(server.url, '_blank')
+    } finally {
+      setReauthing(null)
     }
   }
 
@@ -196,20 +216,6 @@ export default function JupyterPage() {
           </Button>
         </div>
       </div>
-
-      {/* JupyterHub 세션 로그아웃 후 노트북 열기 */}
-      {pendingOpenUrl && (
-        <iframe
-          src={`${process.env.NEXT_PUBLIC_JUPYTERHUB_URL ?? 'http://localhost:30900'}/hub/logout`}
-          onLoad={() => {
-            window.open(pendingOpenUrl, '_blank')
-            setPendingOpenUrl(null)
-            setOpeningServer(null)
-          }}
-          width="1" height="1"
-          style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}
-        />
-      )}
 
       {/* 서버 생성 다이얼로그 */}
       <Dialog open={dialogOpen} onOpenChange={open => !open && handleDialogClose()}>
@@ -366,18 +372,32 @@ export default function JupyterPage() {
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
                         {server.ready && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="size-7"
-                            onClick={e => { e.stopPropagation(); handleOpen(server) }}
-                            disabled={openingServer === server.name}
-                            title="열기"
-                          >
-                            {openingServer === server.name
-                              ? <Loader2 className="size-3.5 animate-spin" />
-                              : <ExternalLink className="size-3.5" />}
-                          </Button>
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-7"
+                              onClick={e => { e.stopPropagation(); handleOpen(server) }}
+                              disabled={openingServer === server.name}
+                              title="열기"
+                            >
+                              {openingServer === server.name
+                                ? <Loader2 className="size-3.5 animate-spin" />
+                                : <ExternalLink className="size-3.5" />}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-7 text-muted-foreground"
+                              onClick={e => { e.stopPropagation(); handleReauth(server) }}
+                              disabled={reauthing === server.name}
+                              title="토큰 재인증"
+                            >
+                              {reauthing === server.name
+                                ? <Loader2 className="size-3.5 animate-spin" />
+                                : <KeyRound className="size-3.5" />}
+                            </Button>
+                          </>
                         )}
                         <Button
                           variant="ghost"
