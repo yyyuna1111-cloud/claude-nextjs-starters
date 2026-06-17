@@ -21,7 +21,6 @@ import {
   CornerUpLeft,
 } from 'lucide-react'
 
-import { useCurrentUser } from '@/hooks/use-current-user'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -123,7 +122,6 @@ function StatusBadge({ status }: { status: LLMDeployment['status'] }) {
 }
 
 export default function LLMPage() {
-  const { isAdmin } = useCurrentUser()
   const [deployments, setDeployments] = useState<LLMDeployment[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -294,9 +292,9 @@ export default function LLMPage() {
           <TabsTrigger value="list" className="gap-1.5">
             <Layers className="size-3.5" /> 배포 현황
           </TabsTrigger>
-          {isAdmin && <TabsTrigger value="deploy" className="gap-1.5">
+          <TabsTrigger value="deploy" className="gap-1.5">
             <Plus className="size-3.5" /> 신규 배포
-          </TabsTrigger>}
+          </TabsTrigger>
         </TabsList>
 
         {/* ─── 배포 현황 탭 ─── */}
@@ -335,7 +333,7 @@ export default function LLMPage() {
                       <TableHead className="text-center">Replica</TableHead>
                       <TableHead>Serving 연결</TableHead>
                       <TableHead>엔드포인트</TableHead>
-                      {isAdmin && <TableHead className="w-10"></TableHead>}
+                      <TableHead className="w-10"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -387,18 +385,16 @@ export default function LLMPage() {
                             <span className="text-muted-foreground text-xs">—</span>
                           )}
                         </TableCell>
-                        {isAdmin && (
-                          <TableCell>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="size-7 text-muted-foreground hover:text-destructive"
-                              onClick={() => setDeleteTarget(dep)}
-                            >
-                              <Trash2 className="size-3.5" />
-                            </Button>
-                          </TableCell>
-                        )}
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-7 text-muted-foreground hover:text-destructive"
+                            onClick={() => setDeleteTarget(dep)}
+                          >
+                            <Trash2 className="size-3.5" />
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -452,20 +448,26 @@ export default function LLMPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <Label htmlFor="namespace">네임스페이스</Label>
-                  <Input
-                    id="namespace"
-                    value={form.namespace}
-                    onChange={e => setForm(f => ({ ...f, namespace: e.target.value }))}
-                  />
+                  <Select value={form.namespace} onValueChange={v => setForm(f => ({ ...f, namespace: v }))} disabled>
+                    <SelectTrigger id="namespace">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="datascience-storage">datascience-storage</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <p className="text-xs text-muted-foreground">shared-sllm PVC가 있는 네임스페이스</p>
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="pvcName">마운트할 PVC 이름</Label>
-                  <Input
-                    id="pvcName"
-                    value={form.pvcName}
-                    onChange={e => setForm(f => ({ ...f, pvcName: e.target.value }))}
-                  />
+                  <Select value={form.pvcName} onValueChange={v => setForm(f => ({ ...f, pvcName: v }))} disabled>
+                    <SelectTrigger id="pvcName">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="shared-sllm">shared-sllm</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
@@ -560,11 +562,14 @@ export default function LLMPage() {
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="image">컨테이너 이미지</Label>
-                  <Input
-                    id="image"
-                    value={form.image}
-                    onChange={e => setForm(f => ({ ...f, image: e.target.value }))}
-                  />
+                  <Select value={form.image} onValueChange={v => setForm(f => ({ ...f, image: v }))} disabled>
+                    <SelectTrigger id="image">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="10.70.170.227:80/model-serving/vllm-openai:v0.19.1">vllm-openai:v0.19.1</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 

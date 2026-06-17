@@ -3,13 +3,21 @@ import { NextRequest, NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
 
-const FILER_URL = process.env.SEAWEEDFS_FILER_URL ?? 'http://10.70.171.177:31994'
-const NFS_SLLM_PATH = '/mnt/sllm'
+const NFS_ROOTS: Record<string, string> = {
+  'shared-sllm': '/mnt/sllm',
+  'ds-nfs': '/mnt/ds',
+}
 
 function safePath(base: string, ...parts: string[]): string {
   const resolved = path.resolve(base, ...parts)
   if (!resolved.startsWith(path.resolve(base))) throw new Error('Invalid path')
   return resolved
+}
+
+function resolveNfsDir(bucket: string, prefix: string): string | null {
+  if (bucket in NFS_ROOTS) return safePath(NFS_ROOTS[bucket], prefix)
+  if (!bucket.startsWith('shared-')) return safePath('/mnt/sllm', bucket, prefix)
+  return null
 }
 
 export async function POST(req: NextRequest) {
@@ -24,13 +32,15 @@ export async function POST(req: NextRequest) {
 
     const buffer = Buffer.from(await file.arrayBuffer())
 
-    if (bucket === 'shared-sllm') {
-      const dirPath = safePath(NFS_SLLM_PATH, prefix)
-      fs.mkdirSync(dirPath, { recursive: true })
-      fs.writeFileSync(path.join(dirPath, file.name), buffer)
+    const nfsDir = resolveNfsDir(bucket, prefix)
+    if (nfsDir !== null) {
+      fs.mkdirSync(nfsDir, { recursive: true })
+      fs.writeFileSync(path.join(nfsDir, file.name), buffer)
       return NextResponse.json({ success: true, key: `${prefix}${file.name}`, name: file.name, bucket })
     }
 
+    // SeaweedFS fallback (레거시)
+    const FILER_URL = process.env.SEAWEEDFS_FILER_URL ?? 'http://10.70.171.177:31994'
     const filePath = `/buckets/${bucket}/${prefix}${file.name}`
     const res = await fetch(`${FILER_URL}${filePath}`, {
       method: 'PUT',

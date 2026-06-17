@@ -18,7 +18,6 @@ import {
   Download,
   Upload,
   Loader2,
-  BookOpen,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -438,7 +437,7 @@ export default function RegistryPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold tracking-tight">Container Registry</h1>
+          <h1 className="text-xl font-bold tracking-tight">Image Registry</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             {REGISTRY_HOST} — Docker 이미지 브라우저
           </p>

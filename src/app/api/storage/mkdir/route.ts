@@ -1,14 +1,23 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
 
-const FILER_URL = process.env.SEAWEEDFS_FILER_URL ?? 'http://10.70.171.177:31994'
-const NFS_SLLM_PATH = '/mnt/sllm'
+const NFS_ROOTS: Record<string, string> = {
+  'shared-sllm': '/mnt/sllm',
+  'ds-nfs': '/mnt/ds',
+}
 
 function safePath(base: string, ...parts: string[]): string {
   const resolved = path.resolve(base, ...parts)
   if (!resolved.startsWith(path.resolve(base))) throw new Error('Invalid path')
   return resolved
+}
+
+function resolveNfsPath(bucket: string, ...parts: string[]): string | null {
+  if (bucket in NFS_ROOTS) return safePath(NFS_ROOTS[bucket], ...parts)
+  if (!bucket.startsWith('shared-')) return safePath('/mnt/sllm', bucket, ...parts)
+  return null
 }
 
 export async function POST(req: NextRequest) {
@@ -22,12 +31,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '유효하지 않은 폴더 이름입니다' }, { status: 400 })
     }
 
-    if (bucket === 'shared-sllm') {
-      const dirPath = safePath(NFS_SLLM_PATH, (prefix ?? '') + name)
-      fs.mkdirSync(dirPath, { recursive: true })
+    const nfsPath = resolveNfsPath(bucket, (prefix ?? '') + name)
+    if (nfsPath !== null) {
+      fs.mkdirSync(nfsPath, { recursive: true })
       return NextResponse.json({ success: true })
     }
 
+    // SeaweedFS fallback (레거시)
+    const FILER_URL = process.env.SEAWEEDFS_FILER_URL ?? 'http://10.70.171.177:31994'
     const dirPath = `/buckets/${bucket}/${prefix ?? ''}${name}/`
     const res = await fetch(`${FILER_URL}${dirPath}`, {
       method: 'POST',

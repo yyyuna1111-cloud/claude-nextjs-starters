@@ -324,6 +324,20 @@ export default function JupyterPage() {
               <p className="text-xs text-muted-foreground">영소문자, 숫자, 하이픈만 사용 가능 (예: my-env, env01)</p>
             </div>
             <div className="space-y-1.5">
+              <label className="text-sm font-medium">GPU <span className="text-muted-foreground font-normal">(선택)</span></label>
+              <Select value={gpuType} onValueChange={v => { setGpuType(v as 'none' | 'standard' | 'high'); setNewImage('') }}>
+                <SelectTrigger className="h-9 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">사용 안 함</SelectItem>
+                  <SelectItem value="standard" disabled>Standard — ds-dev-005 (준비중, 자원 부족)</SelectItem>
+                  <SelectItem value="high">High — H200 (op-l-h200-gpu-004)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">GPU 선택 시 해당 GPU 노드에만 스케줄링되며 CUDA 이미지만 표시됩니다.</p>
+            </div>
+            <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <label className="text-sm font-medium">이미지 <span className="text-muted-foreground font-normal">(선택)</span></label>
                 <button
@@ -347,11 +361,13 @@ export default function JupyterPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__default__">기본 이미지 사용</SelectItem>
-                    {jupyterImages.map(img => (
-                      <SelectItem key={img.value} value={img.value}>
-                        <span className="font-mono text-xs">{img.label}</span>
-                      </SelectItem>
-                    ))}
+                    {jupyterImages
+                      .filter(img => gpuType === 'none' || img.value.toLowerCase().includes('cuda') || img.label.toLowerCase().includes('cuda'))
+                      .map(img => (
+                        <SelectItem key={img.value} value={img.value}>
+                          <span className="font-mono text-xs">{img.label}</span>
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               ) : (
@@ -362,44 +378,22 @@ export default function JupyterPage() {
                   className="h-9 font-mono text-sm"
                 />
               )}
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">스토리지</label>
-              <div className="rounded-md border p-3 space-y-2">
-                {([
-                  { value: 'shared-sllm', label: 'shared-sllm', desc: '/ifs/data/nfs/dev/sllm' },
-                  { value: 'ds-nfs', label: 'DS NFS', desc: '/ifs/data/nfs/DS' },
-                ] as const).map(opt => (
-                  <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="nfs-type"
-                      value={opt.value}
-                      checked={nfsType === opt.value}
-                      onChange={() => setNfsType(opt.value)}
-                      className="accent-primary"
-                    />
-                    <span className="text-sm">
-                      {opt.label} — <span className="font-mono text-xs text-muted-foreground">{opt.desc}</span>
-                    </span>
-                  </label>
-                ))}
-              </div>
-              <p className="text-xs text-muted-foreground">/home/jovyan/work 에 마운트됩니다.</p>
+              {gpuType !== 'none' && imageMode === 'select' && (
+                <p className="text-xs text-amber-600">GPU 사용 모드: CUDA 태그 포함 이미지만 표시됩니다.</p>
+              )}
             </div>
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">GPU <span className="text-muted-foreground font-normal">(선택)</span></label>
-              <Select value={gpuType} onValueChange={v => setGpuType(v as 'none' | 'standard' | 'high')}>
+              <label className="text-sm font-medium">스토리지</label>
+              <Select value={nfsType} onValueChange={v => setNfsType(v as 'shared-sllm' | 'ds-nfs')}>
                 <SelectTrigger className="h-9 text-sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">사용 안 함</SelectItem>
-                  <SelectItem value="standard" disabled>Standard — ds-dev-005 (준비중, 자원 부족)</SelectItem>
-                  <SelectItem value="high">High — H200 (op-l-h200-gpu-004)</SelectItem>
+                  <SelectItem value="shared-sllm">shared-sllm — /ifs/data/nfs/dev/sllm</SelectItem>
+                  <SelectItem value="ds-nfs">DS NFS — /ifs/data/nfs/DS</SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted-foreground">GPU 선택 시 해당 GPU 노드에만 스케줄링되며, CUDA가 포함된 이미지로 자동 전환됩니다. 자원이 부족하면 Pending 상태로 대기합니다.</p>
+              <p className="text-xs text-muted-foreground">/home/jovyan/work 에 마운트됩니다.</p>
             </div>
             <div className="flex justify-end gap-2 pt-1">
               <Button variant="outline" size="sm" onClick={handleDialogClose}>취소</Button>

@@ -21,7 +21,7 @@ const adminNavItems = [
   { href: '/workspace/infrastructure', label: 'Infrastructure', icon: Network },
   { href: '/workspace/storage', label: 'Storage', icon: HardDrive },
   { href: '/workspace/jupyter', label: 'Jupyter', icon: BookOpen },
-  { href: '/workspace/registry', label: 'Registry', icon: Package },
+  { href: '/workspace/registry', label: 'Image Registry', icon: Package },
   { href: '/workspace/admin/users', label: 'User Management', icon: ShieldCheck },
 ]
 
@@ -29,19 +29,21 @@ const userNavItems = [
   { href: '/workspace/storage', label: 'Storage', icon: HardDrive },
   { href: '/workspace/scraping', label: 'Data Scraping', icon: Database },
   { href: '/workspace/jupyter', label: 'Jupyter', icon: BookOpen },
-  { href: '/workspace/registry', label: 'Registry', icon: Package },
+  { href: '/workspace/registry', label: 'Image Registry', icon: Package },
   { href: '/workspace/llm', label: 'Private LLM', icon: Bot },
 ]
 
 export function SidebarNav() {
   const pathname = usePathname()
   const { theme, setTheme } = useTheme()
-  const { user, isAdmin, logout } = useCurrentUser()
+  const { user, isAdmin, accessibleMenus, loaded, logout } = useCurrentUser()
   const [mounted, setMounted] = React.useState(false)
 
   const navItems = React.useMemo(() => {
-    return isAdmin ? adminNavItems : userNavItems
-  }, [isAdmin])
+    if (isAdmin) return adminNavItems
+    if (!accessibleMenus || accessibleMenus.length === 0) return userNavItems
+    return userNavItems.filter(item => accessibleMenus.includes(item.href))
+  }, [isAdmin, accessibleMenus])
 
   React.useEffect(() => {
     setMounted(true)
@@ -50,7 +52,13 @@ export function SidebarNav() {
   return (
     <nav className="flex flex-col gap-1 px-2 h-full">
       <div className="flex-1">
-        {navItems.map(item => {
+        {!loaded ? (
+          <div className="space-y-1 px-1">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="h-9 rounded-md bg-muted/40 animate-pulse" />
+            ))}
+          </div>
+        ) : navItems.map(item => {
           const isActive = item.href === '/workspace'
             ? pathname === '/workspace'
             : pathname === item.href || pathname.startsWith(item.href + '/')
