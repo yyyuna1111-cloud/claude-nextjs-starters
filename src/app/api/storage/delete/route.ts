@@ -3,13 +3,21 @@ import { NextRequest, NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
 
-const FILER_URL = process.env.SEAWEEDFS_FILER_URL ?? 'http://10.70.171.177:31994'
-const NFS_SLLM_PATH = '/mnt/sllm'
+const NFS_ROOTS: Record<string, string> = {
+  'shared-sllm': '/mnt/sllm',
+  'ds-nfs': '/mnt/ds',
+}
 
 function safePath(base: string, ...parts: string[]): string {
   const resolved = path.resolve(base, ...parts)
   if (!resolved.startsWith(path.resolve(base))) throw new Error('Invalid path')
   return resolved
+}
+
+function resolveNfsPath(bucket: string, ...parts: string[]): string | null {
+  if (bucket in NFS_ROOTS) return safePath(NFS_ROOTS[bucket], ...parts)
+  if (!bucket.startsWith('shared-')) return safePath('/mnt/sllm', bucket, ...parts)
+  return null
 }
 
 export async function DELETE(req: NextRequest) {
@@ -20,10 +28,10 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'bucket과 key가 필요합니다' }, { status: 400 })
   }
 
-  if (bucket === 'shared-sllm') {
+  const nfsPath = resolveNfsPath(bucket, key)
+  if (nfsPath !== null) {
     try {
-      const filePath = safePath(NFS_SLLM_PATH, key)
-      fs.unlinkSync(filePath)
+      fs.unlinkSync(nfsPath)
       return NextResponse.json({ success: true })
     } catch (err: any) {
       console.error('[Storage Delete NFS]', err.message)
@@ -31,6 +39,8 @@ export async function DELETE(req: NextRequest) {
     }
   }
 
+  // SeaweedFS fallback (레거시)
+  const FILER_URL = process.env.SEAWEEDFS_FILER_URL ?? 'http://10.70.171.177:31994'
   try {
     const filePath = `/buckets/${bucket}/${key}`
     const res = await fetch(`${FILER_URL}${filePath}`, {

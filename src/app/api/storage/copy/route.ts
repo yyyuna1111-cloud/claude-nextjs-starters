@@ -4,12 +4,26 @@ import fs from 'fs'
 import path from 'path'
 
 const FILER_URL = process.env.SEAWEEDFS_FILER_URL ?? 'http://10.70.171.177:31994'
-const NFS_SLLM_PATH = '/mnt/sllm'
+
+const NFS_ROOTS: Record<string, string> = {
+  'shared-sllm': '/mnt/sllm',
+  'ds-nfs': '/mnt/ds',
+}
 
 function safePath(base: string, ...parts: string[]): string {
   const resolved = path.resolve(base, ...parts)
   if (!resolved.startsWith(path.resolve(base))) throw new Error('Invalid path')
   return resolved
+}
+
+function resolveNfsPath(bucket: string, ...parts: string[]): string | null {
+  if (bucket in NFS_ROOTS) return safePath(NFS_ROOTS[bucket], ...parts)
+  if (!bucket.startsWith('shared-')) return safePath('/mnt/sllm', bucket, ...parts)
+  return null
+}
+
+function isNfsBucket(bucket: string): boolean {
+  return bucket in NFS_ROOTS || !bucket.startsWith('shared-')
 }
 
 async function filerListAll(bucket: string, prefix: string): Promise<string[]> {
@@ -59,24 +73,24 @@ export async function POST(req: NextRequest) {
     const isFolder = sourceKey.endsWith('/')
     const destKey = (destPrefix ?? '') + name
 
-    if (sourceBucket === 'shared-sllm' || destBucket === 'shared-sllm') {
-      const srcBase = sourceBucket === 'shared-sllm' ? NFS_SLLM_PATH : null
-      const dstBase = destBucket === 'shared-sllm' ? NFS_SLLM_PATH : null
-
-      if (srcBase && dstBase) {
-        const srcPath = safePath(srcBase, sourceKey)
-        const dstPath = safePath(dstBase, destKey)
-        if (isFolder) {
-          fs.cpSync(srcPath, dstPath, { recursive: true })
-        } else {
-          fs.mkdirSync(path.dirname(dstPath), { recursive: true })
-          fs.copyFileSync(srcPath, dstPath)
-        }
-        return NextResponse.json({ success: true })
+    // NFS → NFS copy
+    if (isNfsBucket(sourceBucket) && isNfsBucket(destBucket)) {
+      const srcPath = resolveNfsPath(sourceBucket, sourceKey)!
+      const dstPath = resolveNfsPath(destBucket, destKey)!
+      if (isFolder) {
+        fs.cpSync(srcPath, dstPath, { recursive: true })
+      } else {
+        fs.mkdirSync(path.dirname(dstPath), { recursive: true })
+        fs.copyFileSync(srcPath, dstPath)
       }
+      return NextResponse.json({ success: true })
+    }
+
+    if (isNfsBucket(sourceBucket) || isNfsBucket(destBucket)) {
       return NextResponse.json({ error: '버킷 간 복사는 같은 백엔드만 지원합니다' }, { status: 400 })
     }
 
+    // SeaweedFS fallback (레거시)
     if (isFolder) {
       const strippedPrefix = sourceKey
       const allKeys = await filerListAll(sourceBucket, strippedPrefix)

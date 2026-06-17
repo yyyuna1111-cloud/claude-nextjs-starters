@@ -3,11 +3,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
 
-const FILER_URL = process.env.SEAWEEDFS_FILER_URL ?? 'http://10.70.171.177:31994'
-const NFS_SLLM_PATH = '/mnt/sllm'
-
-function isDir(mode: number): boolean {
-  return (mode >>> 31) === 1
+const NFS_ROOTS: Record<string, string> = {
+  'shared-sllm': '/mnt/sllm',
+  'ds-nfs': '/mnt/ds',
 }
 
 function safePath(base: string, ...parts: string[]): string {
@@ -16,15 +14,31 @@ function safePath(base: string, ...parts: string[]): string {
   return resolved
 }
 
+function getNfsBase(bucket: string): string | null {
+  if (bucket in NFS_ROOTS) return NFS_ROOTS[bucket]
+  if (!bucket.startsWith('shared-')) return '/mnt/sllm'  // personal bucket
+  return null
+}
+
+function resolveNfsPath(bucket: string, ...parts: string[]): string {
+  const base = getNfsBase(bucket)!
+  if (bucket in NFS_ROOTS) return safePath(base, ...parts)
+  return safePath(base, bucket, ...parts)  // personal: /mnt/sllm/{username}/{...}
+}
+
+function isDir(mode: number): boolean {
+  return (mode >>> 31) === 1
+}
+
 export async function GET(req: NextRequest) {
   const bucket = req.nextUrl.searchParams.get('bucket')
   const prefix = req.nextUrl.searchParams.get('prefix') ?? ''
 
   if (!bucket) return NextResponse.json({ error: 'bucket 파라미터가 필요합니다' }, { status: 400 })
 
-  if (bucket === 'shared-sllm') {
+  if (getNfsBase(bucket) !== null) {
     try {
-      const dirPath = safePath(NFS_SLLM_PATH, prefix)
+      const dirPath = resolveNfsPath(bucket, prefix)
       const entries = fs.readdirSync(dirPath, { withFileTypes: true })
 
       const folders = entries
@@ -50,6 +64,8 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // SeaweedFS fallback (레거시, 현재 미사용)
+  const FILER_URL = process.env.SEAWEEDFS_FILER_URL ?? 'http://10.70.171.177:31994'
   const dirPath = `/buckets/${bucket}/${prefix}`
   const url = `${FILER_URL}${dirPath}?limit=500`
 
