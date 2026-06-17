@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server'
+import fs from 'fs'
+import path from 'path'
 import { env } from '@/lib/env'
 
 function hubHeaders() {
@@ -49,8 +51,16 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const { username, name, image, extra_pvcs, gpu_type } = await req.json()
+  const { username, name, image, gpu_type } = await req.json()
   if (!username || !name) return NextResponse.json({ error: 'username, name 필요' }, { status: 400 })
+
+  // shared-sllm NFS에 유저/서버 폴더 생성 (subPath 마운트 전에 존재해야 함)
+  const workDir = path.join('/mnt/sllm', username, name)
+  try {
+    fs.mkdirSync(workDir, { recursive: true })
+  } catch {
+    // 대시보드 pod에 /mnt/sllm이 없는 환경(로컬 개발)에서는 무시
+  }
 
   // 유저 없으면 먼저 생성
   const userCheck = await fetch(`${env.JUPYTERHUB_URL}/hub/api/users/${username}`, {
@@ -68,7 +78,6 @@ export async function POST(req: NextRequest) {
   // JupyterHub API는 POST body 전체를 spawner.user_options로 저장
   const body: any = {}
   if (image) body.image = image
-  if (Array.isArray(extra_pvcs) && extra_pvcs.length > 0) body.extra_pvcs = extra_pvcs
   if (gpu_type === 'standard' || gpu_type === 'high') body.gpu_type = gpu_type
 
   const res = await fetch(`${env.JUPYTERHUB_URL}/hub/api/users/${username}/servers/${name}`, {

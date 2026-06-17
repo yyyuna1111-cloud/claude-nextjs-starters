@@ -33,9 +33,6 @@ hub:
       GPU_IMAGES = {
           "high": "10.70.170.227:80/jupyter/base-notebook:x86_64-cuda12.1-python-3.11.6",
       }
-      EXTRA_PVC_MOUNTS = {
-          "shared-sllm": "/home/jovyan/shared-sllm",
-      }
       GPU_NODE_SELECTORS = {
           "standard": {"serving.type": "gpu-standard"},
           "high": {"serving.type": "gpu-high"},
@@ -47,28 +44,15 @@ hub:
           default_image = GPU_IMAGES.get(gpu_type, DEFAULT_IMAGE)
           image = spawner.user_options.get("image") or default_image
           spawner.image = image
-          volumes = [{
-              "name": "personal-storage",
-              "persistentVolumeClaim": {"claimName": f"personal-{username}"},
+          spawner.volumes = [{
+              "name": "shared-sllm",
+              "persistentVolumeClaim": {"claimName": "shared-sllm"},
           }]
-          volume_mounts = [{
-              "name": "personal-storage",
+          spawner.volume_mounts = [{
+              "name": "shared-sllm",
               "mountPath": "/home/jovyan/work",
               "subPath": f"{username}/{servername}",
           }]
-          extra_pvcs = spawner.user_options.get("extra_pvcs", [])
-          for pvc_name in extra_pvcs:
-              if pvc_name in EXTRA_PVC_MOUNTS:
-                  volumes.append({
-                      "name": pvc_name,
-                      "persistentVolumeClaim": {"claimName": pvc_name},
-                  })
-                  volume_mounts.append({
-                      "name": pvc_name,
-                      "mountPath": EXTRA_PVC_MOUNTS[pvc_name],
-                  })
-          spawner.volumes = volumes
-          spawner.volume_mounts = volume_mounts
           if gpu_type in GPU_NODE_SELECTORS:
               spawner.node_selector = GPU_NODE_SELECTORS[gpu_type]
               spawner.extra_resource_limits = {"nvidia.com/gpu": "1"}
