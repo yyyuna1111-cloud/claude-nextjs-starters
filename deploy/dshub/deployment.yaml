@@ -25,6 +25,8 @@ spec:
           volumeMounts:
             - name: sllm-storage
               mountPath: /mnt/sllm
+            - name: ds-storage
+              mountPath: /mnt/ds
           resources:
             requests:
               cpu: 100m
@@ -36,3 +38,6 @@ spec:
         - name: sllm-storage
           persistentVolumeClaim:
             claimName: shared-sllm
+        - name: ds-storage
+          persistentVolumeClaim:
+            claimName: ds-nfs

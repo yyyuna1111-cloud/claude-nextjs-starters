@@ -6,7 +6,6 @@ import { useCurrentUser } from '@/hooks/use-current-user'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -43,6 +42,7 @@ export default function JupyterPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [newName, setNewName] = useState('')
   const [newImage, setNewImage] = useState('')
+  const [nfsType, setNfsType] = useState<'shared-sllm' | 'ds-nfs'>('shared-sllm')
   const [gpuType, setGpuType] = useState<'none' | 'standard' | 'high'>('none')
   const [nameError, setNameError] = useState('')
   const [creating, setCreating] = useState(false)
@@ -97,6 +97,7 @@ export default function JupyterPage() {
     setDialogOpen(false)
     setNewName('')
     setNewImage('')
+    setNfsType('shared-sllm')
     setGpuType('none')
     setNameError('')
     setImageMode('select')
@@ -117,6 +118,7 @@ export default function JupyterPage() {
           username: user,
           name: newName.trim(),
           image: newImage.trim() || undefined,
+          nfs_type: nfsType,
           gpu_type: gpuType === 'none' ? undefined : gpuType,
         }),
       })
@@ -271,15 +273,27 @@ export default function JupyterPage() {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">스토리지</label>
-              <div className="rounded-md border p-3">
-                <div className="flex items-center gap-2">
-                  <Checkbox checked disabled />
-                  <span className="text-sm">
-                    shared-sllm — <span className="font-mono text-xs">/home/jovyan/work</span>
-                    <span className="ml-1 text-xs text-muted-foreground">(기본)</span>
-                  </span>
-                </div>
+              <div className="rounded-md border p-3 space-y-2">
+                {([
+                  { value: 'shared-sllm', label: 'shared-sllm', desc: '/ifs/data/nfs/dev/sllm' },
+                  { value: 'ds-nfs', label: 'DS NFS', desc: '/ifs/data/nfs/DS' },
+                ] as const).map(opt => (
+                  <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="nfs-type"
+                      value={opt.value}
+                      checked={nfsType === opt.value}
+                      onChange={() => setNfsType(opt.value)}
+                      className="accent-primary"
+                    />
+                    <span className="text-sm">
+                      {opt.label} — <span className="font-mono text-xs text-muted-foreground">{opt.desc}</span>
+                    </span>
+                  </label>
+                ))}
               </div>
+              <p className="text-xs text-muted-foreground">/home/jovyan/work 에 마운트됩니다.</p>
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium">GPU <span className="text-muted-foreground font-normal">(선택)</span></label>
