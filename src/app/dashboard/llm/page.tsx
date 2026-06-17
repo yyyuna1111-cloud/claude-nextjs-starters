@@ -21,6 +21,7 @@ import {
   CornerUpLeft,
 } from 'lucide-react'
 
+import { useCurrentUser } from '@/hooks/use-current-user'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -122,6 +123,7 @@ function StatusBadge({ status }: { status: LLMDeployment['status'] }) {
 }
 
 export default function LLMPage() {
+  const { isAdmin } = useCurrentUser()
   const [deployments, setDeployments] = useState<LLMDeployment[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -181,7 +183,6 @@ export default function LLMPage() {
   useEffect(() => { fetchDeployments() }, [fetchDeployments])
 
   const running = deployments.filter(d => d.status === 'Running').length
-  const pending = deployments.filter(d => d.status === 'Pending').length
   const totalGpus = deployments.reduce((sum, d) => sum + d.gpuCount, 0)
   const linked = deployments.filter(d => d.isvcName).length
 
@@ -293,9 +294,9 @@ export default function LLMPage() {
           <TabsTrigger value="list" className="gap-1.5">
             <Layers className="size-3.5" /> 배포 현황
           </TabsTrigger>
-          <TabsTrigger value="deploy" className="gap-1.5">
+          {isAdmin && <TabsTrigger value="deploy" className="gap-1.5">
             <Plus className="size-3.5" /> 신규 배포
-          </TabsTrigger>
+          </TabsTrigger>}
         </TabsList>
 
         {/* ─── 배포 현황 탭 ─── */}
@@ -334,7 +335,7 @@ export default function LLMPage() {
                       <TableHead className="text-center">Replica</TableHead>
                       <TableHead>Serving 연결</TableHead>
                       <TableHead>엔드포인트</TableHead>
-                      <TableHead className="w-10"></TableHead>
+                      {isAdmin && <TableHead className="w-10"></TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -386,16 +387,18 @@ export default function LLMPage() {
                             <span className="text-muted-foreground text-xs">—</span>
                           )}
                         </TableCell>
-                        <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="size-7 text-muted-foreground hover:text-destructive"
-                            onClick={() => setDeleteTarget(dep)}
-                          >
-                            <Trash2 className="size-3.5" />
-                          </Button>
-                        </TableCell>
+                        {isAdmin && (
+                          <TableCell>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-7 text-muted-foreground hover:text-destructive"
+                              onClick={() => setDeleteTarget(dep)}
+                            >
+                              <Trash2 className="size-3.5" />
+                            </Button>
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))}
                   </TableBody>

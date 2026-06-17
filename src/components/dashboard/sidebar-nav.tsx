@@ -36,15 +36,12 @@ const userNavItems = [
 export function SidebarNav() {
   const pathname = usePathname()
   const { theme, setTheme } = useTheme()
-  const { user, isAdmin, accessibleMenus, logout } = useCurrentUser()
+  const { user, isAdmin, logout } = useCurrentUser()
   const [mounted, setMounted] = React.useState(false)
 
   const navItems = React.useMemo(() => {
-    if (!accessibleMenus || accessibleMenus.length === 0) {
-      return isAdmin ? adminNavItems : userNavItems
-    }
-    return adminNavItems.filter(item => accessibleMenus.includes(item.href))
-  }, [isAdmin, accessibleMenus])
+    return isAdmin ? adminNavItems : userNavItems
+  }, [isAdmin])
 
   React.useEffect(() => {
     setMounted(true)
