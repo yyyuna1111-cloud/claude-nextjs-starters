@@ -39,12 +39,10 @@ export default function JupyterPage() {
   const [servers, setServers] = useState<Server[]>([])
   const [openingServer, setOpeningServer] = useState<string | null>(null)
   const [pendingOpenUrl, setPendingOpenUrl] = useState<string | null>(null)
-  const [hasPVC, setHasPVC] = useState<boolean | null>(null)
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [newName, setNewName] = useState('')
   const [newImage, setNewImage] = useState('')
-  const [mountSllm, setMountSllm] = useState(false)
   const [gpuType, setGpuType] = useState<'none' | 'standard' | 'high'>('none')
   const [nameError, setNameError] = useState('')
   const [creating, setCreating] = useState(false)
@@ -67,13 +65,6 @@ export default function JupyterPage() {
 
   useEffect(() => {
     if (!loaded || !user) return
-    fetch('/api/storage/pvcs')
-      .then(r => r.json())
-      .then(data => {
-        const pvcs: { name: string }[] = data.pvcs ?? []
-        setHasPVC(pvcs.some(p => p.name === `personal-${user}`))
-      })
-      .catch(() => setHasPVC(false))
     fetchServers(user)
   }, [loaded, user, fetchServers])
 
@@ -106,7 +97,6 @@ export default function JupyterPage() {
     setDialogOpen(false)
     setNewName('')
     setNewImage('')
-    setMountSllm(false)
     setGpuType('none')
     setNameError('')
     setImageMode('select')
@@ -127,7 +117,6 @@ export default function JupyterPage() {
           username: user,
           name: newName.trim(),
           image: newImage.trim() || undefined,
-          extra_pvcs: mountSllm ? ['shared-sllm'] : [],
           gpu_type: gpuType === 'none' ? undefined : gpuType,
         }),
       })
@@ -186,17 +175,6 @@ export default function JupyterPage() {
   }
 
   if (!loaded || !user) return null
-
-  if (hasPVC === false) return (
-    <div className="flex flex-col items-center justify-center h-[60vh] gap-3 text-center">
-      <BookOpen className="size-12 text-muted-foreground/30" />
-      <p className="text-lg font-semibold">Jupyter 노트북을 이용할 수 없습니다</p>
-      <p className="text-sm text-muted-foreground">
-        <span className="font-mono font-medium">personal-{user}</span> 스토리지가 할당되지 않았습니다.<br />
-        관리자에게 문의하세요.
-      </p>
-    </div>
-  )
 
   return (
     <div className="space-y-6">
@@ -293,23 +271,13 @@ export default function JupyterPage() {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">스토리지</label>
-              <div className="rounded-md border p-3 space-y-2">
+              <div className="rounded-md border p-3">
                 <div className="flex items-center gap-2">
-                  <Checkbox id="mount-personal" checked disabled />
-                  <label htmlFor="mount-personal" className="text-sm cursor-default">
-                    개인 스토리지 — <span className="font-mono text-xs">/home/jovyan/work</span>
+                  <Checkbox checked disabled />
+                  <span className="text-sm">
+                    shared-sllm — <span className="font-mono text-xs">/home/jovyan/work</span>
                     <span className="ml-1 text-xs text-muted-foreground">(기본)</span>
-                  </label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="mount-sllm"
-                    checked={mountSllm}
-                    onCheckedChange={v => setMountSllm(!!v)}
-                  />
-                  <label htmlFor="mount-sllm" className="text-sm cursor-pointer">
-                    shared-sllm — <span className="font-mono text-xs">/home/jovyan/shared-sllm</span>
-                  </label>
+                  </span>
                 </div>
               </div>
             </div>
