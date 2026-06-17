@@ -251,6 +251,41 @@ function ParamRow({
   )
 }
 
+function ExtraAccounts({
+  params,
+  setParams,
+}: {
+  params: Record<string, string>
+  setParams: React.Dispatch<React.SetStateAction<Record<string, string>>>
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div>
+      <button
+        type="button"
+        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        onClick={() => setOpen(v => !v)}
+      >
+        {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+        계정 추가 (2~3번)
+      </button>
+      {open && (
+        <div className="mt-2 space-y-3">
+          {([2, 3] as const).map(n => (
+            <div key={n} className="space-y-1.5">
+              <p className="text-xs font-medium text-muted-foreground">계정 {n}</p>
+              <div className="ml-2 space-y-1.5">
+                <ParamRow paramKey={`NAVER_ID_${n}`} label="아이디" desc="미입력 시 기본값" params={params} setParams={setParams} />
+                <ParamRow paramKey={`NAVER_PW_${n}`} label="비밀번호" desc="미입력 시 기본값" type="password" params={params} setParams={setParams} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function WorkflowBadge({ phase }: { phase?: string }) {
   const map: Record<string, string> = {
     Running: 'bg-blue-500 text-white border-transparent',
@@ -292,10 +327,15 @@ const [params, setParams] = useState<Record<string, string>>({
     CAFE_URL_INPUT: 'https://cafe.naver.com/aclove',
     KEYWORD: '기장',
     USE_SEARCH: 'true',
+    SEARCH_KEYWORDS: '세무기장,기장료,조정료,기장 비용,복식부기',
     LIMIT_PER_KEYWORD: '2',
     BACKFILL_DAYS: '0',
-    NAVER_ID: '',
-    NAVER_PW: '',
+    NAVER_ID_1: '',
+    NAVER_PW_1: '',
+    NAVER_ID_2: '',
+    NAVER_PW_2: '',
+    NAVER_ID_3: '',
+    NAVER_PW_3: '',
   })
 
   // 데이터 JSON 패널
@@ -312,6 +352,7 @@ const [params, setParams] = useState<Record<string, string>>({
   const [dataSortDesc, setDataSortDesc] = useState(true)
   const [dataDateFrom, setDataDateFrom] = useState('')
   const [dataDateTo, setDataDateTo] = useState('')
+  const [dataBoardFilter, setDataBoardFilter] = useState('')
 
   // 크론 스케줄
   const [cronItems, setCronItems] = useState<Record<string, unknown>[]>([])
@@ -518,35 +559,21 @@ const [params, setParams] = useState<Record<string, string>>({
   function startLogStream(wfName: string) {
     stopLogStream()
 
-    const controller = new AbortController()
-    logAbortRef.current = controller
-
-    const run = async () => {
+    const poll = async () => {
       try {
-        const res = await fetch(`/api/scraping/workflows/${wfName}/logs`, { signal: controller.signal })
-        if (!res.body) return
-        const reader = res.body.getReader()
-        const decoder = new TextDecoder()
-        let buffer = ''
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n')
-          buffer = lines.pop() ?? ''
-          const newLines = lines.filter(l => l.trim())
-          if (newLines.length > 0) {
-            setLogLines(prev => {
-              const next = [...prev, ...newLines]
-              setTimeout(() => logsEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
-              return next
-            })
-          }
+        const res = await fetch(`/api/scraping/workflows/${wfName}/logs`)
+        const data = await res.json()
+        const entries: { pod: string; lines: string[] }[] = data.logs ?? []
+        if (entries.length > 0) {
+          const all = entries.flatMap(e => [`── [${e.pod}] ──`, ...e.lines])
+          setLogLines(all)
+          setTimeout(() => logsEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
         }
-      } catch { /* aborted or error */ }
+      } catch { /* ignore */ }
     }
 
-    run()
+    poll()
+    logPollRef.current = setInterval(poll, 5000)
   }
 
   useEffect(() => {
@@ -574,8 +601,10 @@ const [params, setParams] = useState<Record<string, string>>({
         ...Object.keys(dataRows[0]).filter(c => !PRIORITY_COLS.includes(c)),
       ]
     : []
+  const boardNames = Array.from(new Set(dataRows.map(r => r.board_name as string).filter(Boolean))).sort()
   const filteredRows = dataRows
     .filter(row => {
+      if (dataBoardFilter && row.board_name !== dataBoardFilter) return false
       const val = row.curated_at as string | undefined
       if (!val) return true
       const d = val.slice(0, 10)
@@ -781,6 +810,15 @@ const [params, setParams] = useState<Record<string, string>>({
                         </TableCell>
                         <TableCell onClick={e => e.stopPropagation()}>
                           <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-7 text-muted-foreground hover:text-foreground"
+                              title="라이브 패널"
+                              onClick={() => openLivePanel(name)}
+                            >
+                              <ScrollText className="size-3.5" />
+                            </Button>
                             {wf.status?.phase === 'Running' && (
                               <Button
                                 variant="ghost"
@@ -966,7 +1004,7 @@ const [params, setParams] = useState<Record<string, string>>({
               </div>
 
               {/* 필터 바 */}
-              <div className="flex items-center gap-2 border-b px-4 py-2">
+              <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2">
                 <Button
                   variant="outline"
                   size="sm"
@@ -975,6 +1013,16 @@ const [params, setParams] = useState<Record<string, string>>({
                 >
                   {dataSortDesc ? '최신순' : '오래된순'}
                 </Button>
+                {boardNames.length > 0 && (
+                  <select
+                    className="h-7 rounded-md border px-2 text-xs bg-background"
+                    value={dataBoardFilter}
+                    onChange={e => { setDataBoardFilter(e.target.value); setDataPage(1) }}
+                  >
+                    <option value="">전체 게시판</option>
+                    {boardNames.map(b => <option key={b} value={b}>{b}</option>)}
+                  </select>
+                )}
                 <input
                   type="date"
                   className="h-7 rounded-md border px-2 text-xs"
@@ -988,8 +1036,8 @@ const [params, setParams] = useState<Record<string, string>>({
                   value={dataDateTo}
                   onChange={e => { setDataDateTo(e.target.value); setDataPage(1) }}
                 />
-                {(dataDateFrom || dataDateTo) && (
-                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => { setDataDateFrom(''); setDataDateTo(''); setDataPage(1) }}>
+                {(dataDateFrom || dataDateTo || dataBoardFilter) && (
+                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => { setDataDateFrom(''); setDataDateTo(''); setDataBoardFilter(''); setDataPage(1) }}>
                     초기화
                   </Button>
                 )}
@@ -1110,7 +1158,8 @@ const [params, setParams] = useState<Record<string, string>>({
             </div>
             <ParamRow paramKey="USE_SEARCH" label="키워드 검색 수집" desc="true / false" params={params} setParams={setParams}
               tooltip="true → 게시판 수집 + 키워드 검색 수집&#10;false → 게시판 수집만" />
-            <div className="ml-3 border-l-2 border-muted pl-3">
+            <div className="ml-3 space-y-2 border-l-2 border-muted pl-3">
+              <ParamRow paramKey="SEARCH_KEYWORDS" label="검색 키워드" desc="쉼표로 구분" params={params} setParams={setParams} />
               <ParamRow paramKey="LIMIT_PER_KEYWORD" label="키워드당 최대 건수" desc="USE_SEARCH=true일 때만" params={params} setParams={setParams} />
             </div>
             <ParamRow paramKey="BACKFILL_DAYS" label="첫 실행 수집 기간 (일)" desc="0=전체, 7=최근 7일" params={params} setParams={setParams}
@@ -1127,9 +1176,17 @@ const [params, setParams] = useState<Record<string, string>>({
                 네이버 계정 입력 (선택)
               </button>
               {credOpen && (
-                <div className="mt-2 space-y-2">
-                  <ParamRow paramKey="NAVER_ID" label="아이디" desc="미입력 시 기본값" params={params} setParams={setParams} />
-                  <ParamRow paramKey="NAVER_PW" label="비밀번호" desc="미입력 시 기본값" type="password" params={params} setParams={setParams} />
+                <div className="mt-2 space-y-3">
+                  {/* 계정 1 항상 노출 */}
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-medium text-muted-foreground">계정 1</p>
+                    <div className="ml-2 space-y-1.5">
+                      <ParamRow paramKey="NAVER_ID_1" label="아이디" desc="미입력 시 기본값" params={params} setParams={setParams} />
+                      <ParamRow paramKey="NAVER_PW_1" label="비밀번호" desc="미입력 시 기본값" type="password" params={params} setParams={setParams} />
+                    </div>
+                  </div>
+                  {/* 계정 2, 3 드롭다운 */}
+                  <ExtraAccounts params={params} setParams={setParams} />
                 </div>
               )}
             </div>
@@ -1199,31 +1256,46 @@ const [params, setParams] = useState<Record<string, string>>({
             </div>
           )}
 
-          {/* 이벤트 */}
-          <div className="mt-4 flex min-h-0 flex-1 flex-col overflow-auto">
-            <div className="space-y-1">
-              <div className="space-y-1">
-                {events.map((e, i) => (
-                  <div key={i} className="flex items-start gap-2 text-xs">
-                    <span className="text-muted-foreground shrink-0 font-mono">
-                      {e.time}
+          {/* 이벤트 / 로그 탭 */}
+          <div className="mt-4 flex min-h-0 flex-1 flex-col overflow-hidden">
+            <Tabs defaultValue="events" className="flex flex-1 flex-col overflow-hidden">
+              <TabsList className="h-7 w-fit">
+                <TabsTrigger value="events" className="text-xs">이벤트</TabsTrigger>
+                <TabsTrigger value="logs" className="text-xs">
+                  로그
+                  {logLines.length > 0 && (
+                    <span className="ml-1 rounded-full bg-primary px-1.5 py-0 text-[10px] text-primary-foreground">
+                      {logLines.length}
                     </span>
-                    <span
-                      className={
-                        e.type === 'success'
-                          ? 'text-green-500'
-                          : e.type === 'error'
-                            ? 'text-destructive'
-                            : 'text-foreground'
-                      }
-                    >
-                      {e.message}
-                    </span>
-                  </div>
-                ))}
-                <div ref={eventsEndRef} />
-              </div>
-            </div>
+                  )}
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="events" className="mt-2 flex-1 overflow-auto">
+                <div className="space-y-1">
+                  {events.map((e, i) => (
+                    <div key={i} className="flex items-start gap-2 text-xs">
+                      <span className="text-muted-foreground shrink-0 font-mono">{e.time}</span>
+                      <span className={e.type === 'success' ? 'text-green-500' : e.type === 'error' ? 'text-destructive' : 'text-foreground'}>
+                        {e.message}
+                      </span>
+                    </div>
+                  ))}
+                  <div ref={eventsEndRef} />
+                </div>
+              </TabsContent>
+
+              <TabsContent value="logs" className="mt-2 flex-1 overflow-auto">
+                {logLines.length === 0 ? (
+                  <p className="text-muted-foreground text-xs">단계 완료 후 로그 로드.</p>
+                ) : (
+                  <pre className="font-mono text-xs leading-relaxed whitespace-pre-wrap break-all">
+                    {logLines.join('\n')}
+                  </pre>
+                )}
+                <div ref={logsEndRef} />
+              </TabsContent>
+            </Tabs>
           </div>
         </SheetContent>
       </Sheet>
