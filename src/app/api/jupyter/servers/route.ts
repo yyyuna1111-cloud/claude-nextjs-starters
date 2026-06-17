@@ -4,10 +4,30 @@ import fs from 'fs'
 import path from 'path'
 import { env } from '@/lib/env'
 
+const NFS_ROOTS: Record<string, string> = {
+  'shared-sllm': '/mnt/sllm',
+  'ds-nfs': '/mnt/ds',
+}
+
 function hubHeaders() {
   return {
     Authorization: `token ${env.JUPYTERHUB_TOKEN}`,
     'Content-Type': 'application/json',
+  }
+}
+
+function ensureWorkDir(nfsType: string, username: string, servername: string) {
+  const root = NFS_ROOTS[nfsType] ?? NFS_ROOTS['shared-sllm']
+  const userDir = path.join(root, username)
+  const workDir = path.join(userDir, servername)
+  try {
+    fs.mkdirSync(workDir, { recursive: true })
+    // NFS root_squash 환경에서 root→nobody로 squash됨.
+    // nobody가 생성한 dir은 nobody 소유이므로 chmod는 가능, jovyan(1000)이 쓸 수 있게 777 설정.
+    fs.chmodSync(userDir, 0o777)
+    fs.chmodSync(workDir, 0o777)
+  } catch {
+    // 로컬 개발환경처럼 /mnt/sllm|ds 가 없으면 무시
   }
 }
 
@@ -24,7 +44,6 @@ export async function GET(req: NextRequest) {
 
   const data = await res.json()
 
-  // 유저 토큰 발급 (URL에 포함해서 별도 로그인 불필요)
   let token = ''
   const tokenRes = await fetch(`${env.JUPYTERHUB_URL}/hub/api/users/${username}/tokens`, {
     method: 'POST',
@@ -51,16 +70,13 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const { username, name, image, gpu_type } = await req.json()
+  const { username, name, image, gpu_type, nfs_type } = await req.json()
   if (!username || !name) return NextResponse.json({ error: 'username, name 필요' }, { status: 400 })
 
-  // shared-sllm NFS에 유저/서버 폴더 생성 (subPath 마운트 전에 존재해야 함)
-  const workDir = path.join('/mnt/sllm', username, name)
-  try {
-    fs.mkdirSync(workDir, { recursive: true })
-  } catch {
-    // 대시보드 pod에 /mnt/sllm이 없는 환경(로컬 개발)에서는 무시
-  }
+  const selectedNfs = nfs_type === 'ds-nfs' ? 'ds-nfs' : 'shared-sllm'
+
+  // NFS 작업 디렉터리 생성 (subPath 마운트 전에 존재해야 함) + chmod 777
+  ensureWorkDir(selectedNfs, username, name)
 
   // 유저 없으면 먼저 생성
   const userCheck = await fetch(`${env.JUPYTERHUB_URL}/hub/api/users/${username}`, {
@@ -76,7 +92,7 @@ export async function POST(req: NextRequest) {
   }
 
   // JupyterHub API는 POST body 전체를 spawner.user_options로 저장
-  const body: any = {}
+  const body: any = { nfs_type: selectedNfs }
   if (image) body.image = image
   if (gpu_type === 'standard' || gpu_type === 'high') body.gpu_type = gpu_type
 

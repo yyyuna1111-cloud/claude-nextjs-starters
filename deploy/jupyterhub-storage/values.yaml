@@ -37,19 +37,25 @@ hub:
           "standard": {"serving.type": "gpu-standard"},
           "high": {"serving.type": "gpu-high"},
       }
+      NFS_PVCS = {
+          "shared-sllm": "shared-sllm",
+          "ds-nfs": "ds-nfs",
+      }
       async def pre_spawn_hook(spawner):
           username = spawner.user.name
           servername = spawner.name or "default"
           gpu_type = spawner.user_options.get("gpu_type")
+          nfs_type = spawner.user_options.get("nfs_type", "shared-sllm")
+          pvc_name = NFS_PVCS.get(nfs_type, "shared-sllm")
           default_image = GPU_IMAGES.get(gpu_type, DEFAULT_IMAGE)
           image = spawner.user_options.get("image") or default_image
           spawner.image = image
           spawner.volumes = [{
-              "name": "shared-sllm",
-              "persistentVolumeClaim": {"claimName": "shared-sllm"},
+              "name": "work-storage",
+              "persistentVolumeClaim": {"claimName": pvc_name},
           }]
           spawner.volume_mounts = [{
-              "name": "shared-sllm",
+              "name": "work-storage",
               "mountPath": "/home/jovyan/work",
               "subPath": f"{username}/{servername}",
           }]
